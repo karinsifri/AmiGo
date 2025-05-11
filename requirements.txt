@@ -1,0 +1,2 @@
+trimesh>=4.6.8
+potpourri3d>=1.2.1
