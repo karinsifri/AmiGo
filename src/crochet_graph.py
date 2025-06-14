@@ -1,5 +1,6 @@
 import numpy as np
 import trimesh as tm
+import gpytoolbox as gpy
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
 from src.consts import HEAT_COEFFICIENT
@@ -26,7 +27,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     Returns:
         ((n, 2), int) a list of edges the point lay on
     """
-    edges = - np.ones((len(points), 2), dtype=np.int16)
+    edges = np.full((len(points), 2), -1, dtype=np.int16)
     _, _, relevant_face_idx = tm.proximity.closest_point(mesh, points)
     relevant_faces = mesh.faces[relevant_face_idx]
     close_to_vertex = np.all(np.isclose(mesh.vertices[relevant_faces], points[:, None]), axis=-1)
@@ -37,5 +38,28 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     linearly_dependant = np.linalg.matrix_rank(np.stack([face_edges, vertex_to_point], axis=2), tol=1e-10) == 1
     point_on_edge = np.logical_and(linearly_dependant, ~np.any(close_to_vertex, axis=-1)[:, None])
     edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
-                                      np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
+                                                  np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
     return edges
+
+
+def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray) -> np.ndarray:
+    """ Given a mesh, distance-field and a geodesic path, find the vertices of a path to cut the mesh by.
+    TODO: write documentation
+
+    Args:
+        mesh: a Trimesh object
+        distance_field ((v, ), float): a distance field from the seed point
+        path ((n, 3), float): the geodesic path from the seed point to the distance-field maximum where the points lay
+            on the mesh edges
+
+    Returns:
+        ((n, ), int) a list of vertices of the cut path
+    """
+    path_edges = find_edges_from_points(mesh, path)
+    _, _, face_idx = tm.proximity.closest_point(mesh, path)
+    edge_vectors = mesh.vertices[path_edges[:, 0]] - mesh.vertices[path_edges[:, 1]]
+    gradients = np.reshape(gpy.grad(mesh.vertices, mesh.faces) @ distance_field, (-1, 3), order='F')
+    rotated = np.cross(mesh.face_normals, gradients, axis=1)
+    dot_products = np.sum(edge_vectors * rotated[face_idx], axis=1)
+    cut_path = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
+    return cut_path
