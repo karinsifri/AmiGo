@@ -4,6 +4,7 @@ import gpytoolbox as gpy
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
 from src.consts import HEAT_COEFFICIENT
+from src.utils import least_squares_with_equality
 
 
 def create_crochet_graph(mesh: tm.Trimesh, origin: int):
@@ -90,28 +91,4 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, geodesic_path: 
         new_v[condition_edges[:, 0]] - geodesic_path, axis=-1)
     zero_vert = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
     B[zero_vert, condition_edges[zero_vert, 0]] = 1
-    return least_squares_with_equality(A, np.ones(len(new_f, )), B)
-
-
-def least_squares_with_equality(A, c, B):
-    # TODO: move, documentation
-    # Dimensions
-    n = A.shape[1]  # Number of variables
-    m = B.shape[0]  # Number of constraints
-
-    # Build the KKT matrix
-    KKT_matrix = np.block([
-        [2 * A.T @ A, B.T],
-        [B, np.zeros((m, m))]
-    ])
-
-    # Build the RHS
-    RHS = np.concatenate([2 * A.T @ c, np.zeros(m)])
-
-    # Solve the system
-    solution = np.linalg.solve(KKT_matrix, RHS)
-
-    # Extract x (the predicted vector)
-    x = solution[:n]
-
-    return x
+    return least_squares_with_equality(A, np.ones(len(mesh.faces,)), B)
