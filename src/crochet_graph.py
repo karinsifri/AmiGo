@@ -10,9 +10,9 @@ def create_crochet_graph(mesh: tm.Trimesh, origin: int):
     v = mesh.vertices
     f = mesh.faces
     distance_solver = MeshHeatMethodDistanceSolver(v, f, t_coef=HEAT_COEFFICIENT)
-    row_order = distance_solver.compute_distance(origin)
+    distance_field = distance_solver.compute_distance(origin)
     path_solver = EdgeFlipGeodesicSolver(v, f)
-    geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(row_order))
+    geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(distance_field))
 
 
 def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
@@ -53,7 +53,7 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
             on the mesh edges
 
     Returns:
-        ((n, ), int) a list of vertices of the cut path
+        ((n, 2), int) a list of edges of the cut path
     """
     path_edges = find_edges_from_points(mesh, path)
     _, _, face_idx = tm.proximity.closest_point(mesh, path)
@@ -61,5 +61,10 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
     gradients = np.reshape(gpy.grad(mesh.vertices, mesh.faces) @ distance_field, (-1, 3), order='F')
     rotated = np.cross(mesh.face_normals, gradients, axis=1)
     dot_products = np.sum(edge_vectors * rotated[face_idx], axis=1)
-    cut_path = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
-    return cut_path
+    # select the "right" side of the edge
+    # where the angle between the rotated gradient and the edge is in the range [-90, 90]
+    cut_vertices = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
+    # convert the vertex trail to a connected path of edges
+    cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T
+    cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]  # remove degenerate edges
+    return cut_edges
