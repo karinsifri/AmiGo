@@ -13,6 +13,11 @@ def create_crochet_graph(mesh: tm.Trimesh, origin: int):
     distance_field = distance_solver.compute_distance(origin)
     path_solver = EdgeFlipGeodesicSolver(v, f)
     geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(distance_field))
+    cut_path = get_path_cut(mesh, distance_field, geodesic_path)
+    f_new, v_ind_new = gpy.cut_edges(f, cut_path)
+    v_new = v[v_ind_new]
+    row_order = distance_field[v_ind_new]
+    cut_mesh = tm.Trimesh(vertices=v_new, faces=f_new, process=False)
 
 
 def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
@@ -68,3 +73,45 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
     cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T
     cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]  # remove degenerate edges
     return cut_edges
+
+
+def get_column_order(mesh: tm.Trimesh, distance_field: np.array, geodesic_path: np.array) -> np.ndarray:
+    # TODO: refactor, add documentation
+    grad = gpy.grad(mesh.vertices, mesh.faces)
+    grad_operator = grad.toarray().reshape((len(mesh.faces), 3, len(mesh.faces)), order='F')
+    distance_gradient = (grad @ distance_field).reshape((-1, 3), order='F')
+    rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
+    A = np.sum(rotated_distance[:, :, None] * grad_operator, axis=1)
+    condition_edges = find_edges_from_points(mesh, geodesic_path)
+    B = np.zeros((len(condition_edges), len(new_v)))
+    B[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
+        new_v[condition_edges[:, 1]] - geodesic_path, axis=-1)
+    B[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
+        new_v[condition_edges[:, 0]] - geodesic_path, axis=-1)
+    zero_vert = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
+    B[zero_vert, condition_edges[zero_vert, 0]] = 1
+    return least_squares_with_equality(A, np.ones(len(new_f, )), B)
+
+
+def least_squares_with_equality(A, c, B):
+    # TODO: move, documentation
+    # Dimensions
+    n = A.shape[1]  # Number of variables
+    m = B.shape[0]  # Number of constraints
+
+    # Build the KKT matrix
+    KKT_matrix = np.block([
+        [2 * A.T @ A, B.T],
+        [B, np.zeros((m, m))]
+    ])
+
+    # Build the RHS
+    RHS = np.concatenate([2 * A.T @ c, np.zeros(m)])
+
+    # Solve the system
+    solution = np.linalg.solve(KKT_matrix, RHS)
+
+    # Extract x (the predicted vector)
+    x = solution[:n]
+
+    return x
