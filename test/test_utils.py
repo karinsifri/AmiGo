@@ -3,7 +3,7 @@ import numpy as np
 from src.utils import least_squares_with_equality
 
 
-def test_basic_case():
+def test_least_squares_with_equality_basic_case():
     """ test least_squares_with_equality for a basic case """
     A = np.array([[1, 0], [0, 1]])
     c = np.array([3, 4])
@@ -15,7 +15,7 @@ def test_basic_case():
     assert np.allclose(x, expected, atol=1e-6)
 
 
-def test_no_constraint():
+def test_least_squares_with_equality_no_constraint():
     """ test least_squares_with_equality for a no constraint """
     A = np.array([[2, 0], [0, 1]])
     c = np.array([2, 1])
@@ -26,7 +26,7 @@ def test_no_constraint():
     assert np.allclose(x, expected, atol=1e-6)
 
 
-def test_multiple_constraints():
+def test_least_squares_with_equality_multiple_constraints():
     """ test least_squares_with_equality for multiple constraints """
     A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     c = np.array([1.0, 2.0, 3.0])
