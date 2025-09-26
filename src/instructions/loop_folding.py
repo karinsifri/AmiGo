@@ -24,29 +24,32 @@ class Loop:
         return f"{self.num_repetitions}*[{self.content}]"
 
 
-def fold_loops(instructions: list[str]) -> list[Loop|str]:
+def fold_loops(instructions: list[str]) -> list[Loop | str]:
     n = len(instructions)
 
     if n == 1:
         return instructions
 
-    for window_size in range(n // 2, 0, -1):
-        i = 0
-        while i <= n - 2 * window_size:
-            pattern = instructions[i:i + window_size]
+    for pattern_size in range(n // 2, 0, -1):
+        pattern_start = 0
+
+        while pattern_start <= n - 2 * pattern_size:
+            pattern = instructions[pattern_start:pattern_start + pattern_size]
+
             if len(set(pattern)) == 1:
-                i += 1
+                pattern_start += 1
                 continue
 
             count = 1
-            while (i + count * window_size + window_size) <= n and \
-                    instructions[i + count * window_size: i + (count + 1) * window_size] == pattern:
+            while (pattern_start + count * pattern_size + pattern_size) <= n and \
+                    instructions[
+                    pattern_start + count * pattern_size: pattern_start + (count + 1) * pattern_size] == pattern:
                 count += 1
 
             if count > 1:
                 folded = []
                 # Fold BEFORE
-                folded.extend(fold_loops(instructions[:i]))
+                folded.extend(fold_loops(instructions[:pattern_start]))
 
                 # Fold INSIDE (in case the pattern itself can be folded further)
                 inner_folded = fold_loops(pattern)
@@ -58,8 +61,8 @@ def fold_loops(instructions: list[str]) -> list[Loop|str]:
                     folded.append((count, inner_folded))
 
                 # Fold AFTER
-                folded.extend(fold_loops(instructions[i + count * window_size:]))
+                folded.extend(fold_loops(instructions[pattern_start + count * pattern_size:]))
                 return folded
 
-            i += 1
+            pattern_start += 1
     return instructions
