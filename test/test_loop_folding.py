@@ -1,6 +1,8 @@
+from typing import Optional
+
 import pytest
 
-from src.instructions.loop_folding import fold_loops, Program
+from src.instructions.loop_folding import Program, Loop, find_loop
 
 
 @pytest.mark.parametrize("instructions, folded_instructions", [
@@ -9,7 +11,20 @@ from src.instructions.loop_folding import fold_loops, Program
     ('a a b a a b', '2*[2a,b]'),
     ('a b a b a b a b', '4*[a,b]'),
 ])
-def test_loop_folding(instructions, folded_instructions):
+def test_loop_folding(instructions: str, folded_instructions: str):
     """ Test the fold_instructions function """
     actual = Program.fold_instructions(instructions.split())
     assert str(actual) == folded_instructions
+
+
+@pytest.mark.parametrize("pattern, tail, expected_loop, expected_tail", [
+    ('a', 'b', 'None', 'a b'),
+    ('a', 'a b', '2a', 'b'),
+    ('a b c', 'a b c a b c a b a c', '3*[a,b,c]', 'a b a c'),
+    ('a b', 'a b a b a b a b a b', '6*[a,b]', ''),
+    ('a b', 'a b a b a c b a b a b', '3*[a,b]', 'a c b a b a b'),
+    ('a b', 'c a b a b a b a b a b', 'None', 'a b c a b a b a b a b a b'),
+])
+def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: str):
+    returned_loop, returned_tail = find_loop(pattern.split(), tail.split())
+    assert str(returned_loop) == expected_loop and " ".join(returned_tail) == expected_tail

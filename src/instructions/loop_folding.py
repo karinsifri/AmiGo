@@ -51,4 +51,13 @@ class Loop:
 
 
 def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
-    return None, pattern + rest
+    num_repetitions = 1
+    pattern_size = len(pattern)
+    while len(rest) >= pattern_size:
+        if not rest[:pattern_size] == pattern:
+            break
+        num_repetitions += 1
+        rest = rest[pattern_size:]
+    if num_repetitions == 1:
+        return None, pattern + rest
+    return Loop(num_repetitions, Program.fold_instructions(pattern)), rest
