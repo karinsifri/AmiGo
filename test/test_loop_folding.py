@@ -1,6 +1,6 @@
 import pytest
 
-from src.instructions.loop_folding import fold_loops
+from src.instructions.loop_folding import fold_loops, Program
 
 
 @pytest.mark.parametrize("instructions, folded_instructions", [
@@ -10,6 +10,6 @@ from src.instructions.loop_folding import fold_loops
     ('a b a b a b a b', '4*[a,b]'),
 ])
 def test_loop_folding(instructions, folded_instructions):
-    """ Test the fold_loops function """
-    actual = ",".join(map(str, fold_loops(instructions.split())))
-    assert actual == folded_instructions
+    """ Test the fold_instructions function """
+    actual = Program.fold_instructions(instructions.split())
+    assert str(actual) == folded_instructions

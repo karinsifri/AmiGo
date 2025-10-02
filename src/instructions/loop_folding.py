@@ -1,10 +1,36 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Optional
 
 
-@dataclass
 class Program:
     content: list[Loop | str]
+
+    def __init__(self, content: list[Loop | str]) -> None:
+        self.content = content
+
+    @classmethod
+    def fold_instructions(cls, instructions: list[str]) -> Program:
+        n = len(instructions)
+
+        if n == 0:
+            return Program(instructions)
+
+        for pattern_size in range(n // 2, 0, -1):
+            pattern_start = 0
+
+            while pattern_start <= n - 2 * pattern_size:
+                pattern = instructions[pattern_start:pattern_start + pattern_size]
+                tail = instructions[pattern_start + pattern_size:]
+                loop, rest = find_loop(pattern, tail)
+
+                if loop is not None:
+                    head = instructions[:pattern_start]
+                    return Program.fold_instructions(head).extand(loop.extand(Program.fold_instructions(rest)))
+
+                pattern_start += 1
+
+        return Program(instructions)
 
     def __len__(self) -> int:
         return len(self.content)
@@ -24,45 +50,5 @@ class Loop:
         return f"{self.num_repetitions}*[{self.content}]"
 
 
-def fold_loops(instructions: list[str]) -> list[Loop | str]:
-    n = len(instructions)
-
-    if n == 1:
-        return instructions
-
-    for pattern_size in range(n // 2, 0, -1):
-        pattern_start = 0
-
-        while pattern_start <= n - 2 * pattern_size:
-            pattern = instructions[pattern_start:pattern_start + pattern_size]
-
-            if len(set(pattern)) == 1:
-                pattern_start += 1
-                continue
-
-            count = 1
-            while (pattern_start + count * pattern_size + pattern_size) <= n and \
-                    instructions[
-                    pattern_start + count * pattern_size: pattern_start + (count + 1) * pattern_size] == pattern:
-                count += 1
-
-            if count > 1:
-                folded = []
-                # Fold BEFORE
-                folded.extend(fold_loops(instructions[:pattern_start]))
-
-                # Fold INSIDE (in case the pattern itself can be folded further)
-                inner_folded = fold_loops(pattern)
-
-                # Fold the loop
-                if len(inner_folded) == 1 and isinstance(inner_folded[0], tuple):
-                    folded.append((count * inner_folded[0][0], inner_folded[0][1]))
-                else:
-                    folded.append((count, inner_folded))
-
-                # Fold AFTER
-                folded.extend(fold_loops(instructions[pattern_start + count * pattern_size:]))
-                return folded
-
-            pattern_start += 1
-    return instructions
+def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
+    return None, pattern + rest
