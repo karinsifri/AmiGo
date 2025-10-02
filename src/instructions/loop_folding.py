@@ -26,7 +26,7 @@ class Program:
         self.content = content
 
     @classmethod
-    def fold_instructions(cls, instructions: list[str]) -> Program:
+    def fold(cls, instructions: list[str]) -> Program:
         """Folds a flat sequence of crochet instructions into a compact Program.
 
         The folding process detects maximal repeated subsequences of instructions and groups them into Loop objects.
@@ -40,21 +40,16 @@ class Program:
         """
         n = len(instructions)
 
-        for pattern_size in range(n // 2, 0, -1):
-            pattern_start = 0
+        for window_len in range(n // 2, 0, -1):
 
-            while pattern_start <= n - 2 * pattern_size:
-                pattern = instructions[pattern_start:pattern_start + pattern_size]
-                tail = instructions[pattern_start + pattern_size:]
-                loop, rest = find_loop(pattern, tail)
+            for start_idx in range(n - 2 * window_len + 1):
+                window = instructions[start_idx:start_idx + window_len]
+                remaining = instructions[start_idx + window_len:]
+                loop, rest = _fold_repetitions(window, remaining)
 
                 if loop is not None:
-                    head = instructions[:pattern_start]
-                    return Program.fold_instructions(head).extend(
-                        loop.extend(Program.fold_instructions(rest))
-                    )
-
-                pattern_start += 1
+                    head = Program.fold(instructions[:start_idx])
+                    return head.concat(loop.merge_with(Program.fold(rest)))
 
         return Program(instructions)
 
@@ -66,7 +61,7 @@ class Program:
         """ Returns a human-readable string representation of the program. """
         return ",".join(map(str, self.content))
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Program) -> bool:
         """ Checks equality by comparing string representations. """
         return str(self) == str(other)
 
@@ -74,7 +69,7 @@ class Program:
         """ Retrieves the element at the given index. """
         return self.content[index]
 
-    def extend(self, other: Program) -> Program:
+    def concat(self, other: Program) -> Program:
         """ Concatenates this program with another. """
         return Program(self.content + other.content)
 
@@ -104,7 +99,7 @@ class Loop:
             return f"{self.num_repetitions}{self.content}"
         return f"{self.num_repetitions}*[{self.content}]"
 
-    def extend(self, program: Program) -> Program:
+    def merge_with(self, program: Program) -> Program:
         """Merges this loop with the beginning of another program if possible.
 
         This supports folding adjacent repetitions into a larger loop.
@@ -138,13 +133,13 @@ class Loop:
         Returns:
             Loop: A Loop object representing the folded pattern.
         """
-        content = Program.fold_instructions(instructions)
+        content = Program.fold(instructions)
         if len(content) == 1 and isinstance(content[0], Loop):
             return Loop(num_repetitions * content[0].num_repetitions, content[0].content)
         return Loop(num_repetitions, content)
 
 
-def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
+def _fold_repetitions(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
     """Detects and folds repetitions of a given pattern at the start of `rest`.
 
     Args:
