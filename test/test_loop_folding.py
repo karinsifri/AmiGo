@@ -46,3 +46,12 @@ def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
 ])
 def test_program_extend(program_1: Program, program_2: Program, expected_result: str):
     assert str(program_1.extend(program_2)) == expected_result
+
+
+@pytest.mark.parametrize("num_repetitions, content, expected_result", [
+    (5, 'a a a', '15a'),
+    (3, 'a a b', '3*[2a,b]'),
+    (2, 'a b a b a b', '6*[a,b]'),
+])
+def test_loop_fold(num_repetitions: int, content: str, expected_result: str):
+    assert str(Loop.fold(num_repetitions, content.split())) == expected_result

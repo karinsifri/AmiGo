@@ -66,6 +66,13 @@ class Loop:
             tail_content = program[len(self.content):]
         return Program([self] + tail_content)
 
+    @classmethod
+    def fold(cls, num_repetitions: int, instructions: list[str]) -> Loop:
+        content = Program.fold_instructions(instructions)
+        if len(content) == 1 and isinstance(content[0], Loop):
+            return Loop(num_repetitions * content[0].num_repetitions, content[0].content)
+        return Loop(num_repetitions, content)
+
 
 def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
     num_repetitions = 1
@@ -77,4 +84,4 @@ def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list
         rest = rest[pattern_size:]
     if num_repetitions == 1:
         return None, pattern + rest
-    return Loop(num_repetitions, Program.fold_instructions(pattern)), rest
+    return Loop.fold(num_repetitions, pattern), rest
