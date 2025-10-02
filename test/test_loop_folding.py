@@ -32,6 +32,7 @@ def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: s
     (Loop(3, Program(['a'])), Program([Loop(2, Program(['a'])), 'b', 'a']), '5a,b,a'),
     (Loop(2, Program(['a', 'b'])), Program(['a', 'b', 'c']), '3*[a,b],c'),
     (Loop(2, Program(['a', 'b'])), Program(['c', 'a', 'b']), '2*[a,b],c,a,b'),
+    (Loop(5, Program(['a'])), Program([]), '5a'),
 ])
 def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
     assert str(loop.extend(rest)) == expected_result
@@ -41,6 +42,7 @@ def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
     (Program(['a']), Program(['b', 'a']), 'a,b,a'),
     (Program(['a', 'b', Loop(4, Program(['c', 'd', 'e'])), 'f', 'g', 'h']), Program(['a', Loop(3, Program(['b']))]),
      'a,b,4*[c,d,e],f,g,h,a,3b'),
+    (Program(['h', 'e', 'l', 'l', 'o']), Program([]), 'h,e,l,l,o')
 ])
 def test_program_extend(program_1: Program, program_2: Program, expected_result: str):
     assert str(program_1.extend(program_2)) == expected_result

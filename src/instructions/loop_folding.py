@@ -14,9 +14,6 @@ class Program:
     def fold_instructions(cls, instructions: list[str]) -> Program:
         n = len(instructions)
 
-        if n == 0:
-            return Program(instructions)
-
         for pattern_size in range(n // 2, 0, -1):
             pattern_start = 0
 
@@ -48,6 +45,7 @@ class Program:
     def extend(self, other: Program) -> Program:
         return Program(self.content + other.content)
 
+
 @dataclass
 class Loop:
     num_repetitions: int
@@ -60,10 +58,10 @@ class Loop:
 
     def extend(self, program: Program) -> Program:
         tail_content = program.content
-        if isinstance(program[0], Loop) and program[0].content == self.content:
+        if len(program) > 0 and isinstance(program[0], Loop) and program[0].content == self.content:
             self.num_repetitions += program[0].num_repetitions
             tail_content = program[1:]
-        if self.content == Program(program[:len(self.content)]):
+        elif self.content == Program(program[:len(self.content)]):
             self.num_repetitions += 1
             tail_content = program[len(self.content):]
         return Program([self] + tail_content)
