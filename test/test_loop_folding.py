@@ -8,6 +8,9 @@ from src.instructions.loop_folding import Program, Loop, find_loop
     ('a a', '2a'),
     ('a a b a a b', '2*[2a,b]'),
     ('a b a b a b a b', '4*[a,b]'),
+    ('a a a a a a a', '7a'),
+    ('a a a a b c a b c c c', '3a,2*[a,b,c],2c'),
+    ('sc inc sc sc sc inc sc sc sc inc sc sc', '3*[sc,inc,2sc]')
 ])
 def test_loop_folding(instructions: str, folded_instructions: str):
     """ Test the fold_instructions function """
@@ -21,7 +24,7 @@ def test_loop_folding(instructions: str, folded_instructions: str):
     ('a b c', 'a b c a b c a b a c', '3*[a,b,c]', 'a b a c'),
     ('a b', 'a b a b a b a b a b', '6*[a,b]', ''),
     ('a b', 'a b a b a c b a b a b', '3*[a,b]', 'a c b a b a b'),
-    ('a b', 'c a b a b a b a b a b', 'None', 'a b c a b a b a b a b a b'),
+    ('a b', 'c a b a b a b a b a b', 'None', 'a b c a b a b a b a b a b')
 ])
 def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: str):
     returned_loop, returned_tail = find_loop(pattern.split(), tail.split())
@@ -32,7 +35,7 @@ def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: s
     (Loop(3, Program(['a'])), Program([Loop(2, Program(['a'])), 'b', 'a']), '5a,b,a'),
     (Loop(2, Program(['a', 'b'])), Program(['a', 'b', 'c']), '3*[a,b],c'),
     (Loop(2, Program(['a', 'b'])), Program(['c', 'a', 'b']), '2*[a,b],c,a,b'),
-    (Loop(5, Program(['a'])), Program([]), '5a'),
+    (Loop(5, Program(['a'])), Program([]), '5a')
 ])
 def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
     assert str(loop.extend(rest)) == expected_result
@@ -51,7 +54,7 @@ def test_program_extend(program_1: Program, program_2: Program, expected_result:
 @pytest.mark.parametrize("num_repetitions, content, expected_result", [
     (5, 'a a a', '15a'),
     (3, 'a a b', '3*[2a,b]'),
-    (2, 'a b a b a b', '6*[a,b]'),
+    (2, 'a b a b a b', '6*[a,b]')
 ])
 def test_loop_fold(num_repetitions: int, content: str, expected_result: str):
     assert str(Loop.fold(num_repetitions, content.split())) == expected_result
