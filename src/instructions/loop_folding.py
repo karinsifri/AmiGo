@@ -45,6 +45,8 @@ class Program:
     def __getitem__(self, index: int) -> Loop | str:
         return self.content[index]
 
+    def extend(self, other: Program) -> Program:
+        return Program(self.content + other.content)
 
 @dataclass
 class Loop:

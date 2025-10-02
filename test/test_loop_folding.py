@@ -35,3 +35,12 @@ def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: s
 ])
 def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
     assert str(loop.extend(rest)) == expected_result
+
+
+@pytest.mark.parametrize("program_1, program_2, expected_result", [
+    (Program(['a']), Program(['b', 'a']), 'a,b,a'),
+    (Program(['a', 'b', Loop(4, Program(['c', 'd', 'e'])), 'f', 'g', 'h']), Program(['a', Loop(3, Program(['b']))]),
+     'a,b,4*[c,d,e],f,g,h,a,3b'),
+])
+def test_program_extend(program_1: Program, program_2: Program, expected_result: str):
+    assert str(program_1.extend(program_2)) == expected_result
