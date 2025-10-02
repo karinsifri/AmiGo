@@ -1,5 +1,3 @@
-from typing import Optional
-
 import pytest
 
 from src.instructions.loop_folding import Program, Loop, find_loop
@@ -28,3 +26,12 @@ def test_loop_folding(instructions: str, folded_instructions: str):
 def test_find_loop(pattern: str, tail: str, expected_loop: str, expected_tail: str):
     returned_loop, returned_tail = find_loop(pattern.split(), tail.split())
     assert str(returned_loop) == expected_loop and " ".join(returned_tail) == expected_tail
+
+
+@pytest.mark.parametrize("loop, rest, expected_result", [
+    (Loop(3, Program(['a'])), Program([Loop(2, Program(['a'])), 'b', 'a']), '5a,b,a'),
+    (Loop(2, Program(['a', 'b'])), Program(['a', 'b', 'c']), '3*[a,b],c'),
+    (Loop(2, Program(['a', 'b'])), Program(['c', 'a', 'b']), '2*[a,b],c,a,b'),
+])
+def test_loop_extend(loop: Loop, rest: Program, expected_result: str):
+    assert str(loop.extend(rest)) == expected_result

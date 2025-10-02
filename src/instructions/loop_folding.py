@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -26,7 +27,7 @@ class Program:
 
                 if loop is not None:
                     head = instructions[:pattern_start]
-                    return Program.fold_instructions(head).extand(loop.extand(Program.fold_instructions(rest)))
+                    return Program.fold_instructions(head).extend(loop.extend(Program.fold_instructions(rest)))
 
                 pattern_start += 1
 
@@ -38,6 +39,12 @@ class Program:
     def __str__(self) -> str:
         return ",".join(map(str, self.content))
 
+    def __eq__(self, other: object) -> bool:
+        return str(self) == str(other)
+
+    def __getitem__(self, index: int) -> Loop | str:
+        return self.content[index]
+
 
 @dataclass
 class Loop:
@@ -48,6 +55,16 @@ class Loop:
         if len(self.content) == 1:
             return f"{self.num_repetitions}{self.content}"
         return f"{self.num_repetitions}*[{self.content}]"
+
+    def extend(self, program: Program) -> Program:
+        tail_content = program.content
+        if isinstance(program[0], Loop) and program[0].content == self.content:
+            self.num_repetitions += program[0].num_repetitions
+            tail_content = program[1:]
+        if self.content == Program(program[:len(self.content)]):
+            self.num_repetitions += 1
+            tail_content = program[len(self.content):]
+        return Program([self] + tail_content)
 
 
 def find_loop(pattern: list[str], rest: list[str]) -> tuple[Optional[Loop], list[str]]:
