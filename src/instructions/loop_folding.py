@@ -111,12 +111,15 @@ class Loop:
             Program: A new Program that combines this loop with the given program.
         """
         tail_content = program.content
+
         if len(program) > 0 and isinstance(program[0], Loop) and program[0].content == self.content:
             self.num_repetitions += program[0].num_repetitions
             tail_content = program[1:]
+
         elif self.content == Program(program[:len(self.content)]):
             self.num_repetitions += 1
             tail_content = program[len(self.content):]
+
         return Program([self] + tail_content)
 
     @classmethod
@@ -134,8 +137,10 @@ class Loop:
             Loop: A Loop object representing the folded pattern.
         """
         content = Program.fold(instructions)
+
         if len(content) == 1 and isinstance(content[0], Loop):
             return Loop(num_repetitions * content[0].num_repetitions, content[0].content)
+
         return Loop(num_repetitions, content)
 
 
@@ -153,11 +158,16 @@ def _fold_repetitions(pattern: list[str], rest: list[str]) -> tuple[Optional[Loo
     """
     num_repetitions = 1
     pattern_size = len(pattern)
+
     while len(rest) >= pattern_size:
+
         if not rest[:pattern_size] == pattern:
             break
+
         num_repetitions += 1
         rest = rest[pattern_size:]
+
     if num_repetitions == 1:
         return None, pattern + rest
+
     return Loop.fold(num_repetitions, pattern), rest
