@@ -14,8 +14,9 @@ def set_surface_area_to_one(mesh: tm.Trimesh) -> tm.Trimesh:
     Raises:
         ValueError: If the mesh has invalid surface area.
     """
-    if mesh.area <= 0 or not np.isfinite(mesh.area):
-        raise ValueError(f"Mesh has invalid surface area: {mesh.area}. Expected finite positive value.")
-    mesh = mesh.copy()
-    mesh.apply_scale(1 / np.sqrt(mesh.area))
-    return mesh
+    area = float(mesh.area)
+    if not np.isfinite(area) or area <= 1e-12:
+        raise ValueError(f"Invalid surface area: {area}")
+    scaled = mesh.copy()
+    scaled.apply_scale(1.0 / np.sqrt(area))
+    return scaled
