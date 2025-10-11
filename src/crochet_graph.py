@@ -3,7 +3,7 @@ import trimesh as tm
 import gpytoolbox as gpy
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
-from src.consts import HEAT_COEFFICIENT
+from src.consts import HEAT_COEFFICIENT, EPSILON
 from src.utils import least_squares_with_equality
 
 
@@ -97,7 +97,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, geodesic_path: 
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
     _, _, face_idx = tm.proximity.closest_point(mesh, geodesic_path)
-    condition_edges = find_edges_from_points(mesh, geodesic_path + rotated_gradient[face_idx] * 1e-16) # "push" to the zero side
+    condition_edges = find_edges_from_points(mesh, geodesic_path + rotated_gradient[face_idx] * EPSILON) # "push" to the zero side
     B = np.zeros((len(condition_edges), len(mesh.vertices)))
     B[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
         mesh.vertices[condition_edges[:, 1]] - geodesic_path, axis=-1)
