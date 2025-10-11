@@ -72,7 +72,8 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
 
 def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray) -> np.ndarray:
     """ Given a mesh, distance-field and a geodesic path, find the vertices of a path to cut the mesh by.
-    TODO: write documentation
+
+    Cut the mesh on the right to the geodesic path, determining orientation by the gradient of the distance field.
 
     Args:
         mesh: a Trimesh object
@@ -84,17 +85,26 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
         ((n, 2), int) a list of edges of the cut path
     """
     path_edges = find_edges_from_points(mesh, path)
+
     _, _, face_idx = tm.proximity.closest_point(mesh, path)
     edge_vectors = mesh.vertices[path_edges[:, 0]] - mesh.vertices[path_edges[:, 1]]
+
     gradients = np.reshape(gpy.grad(mesh.vertices, mesh.faces) @ distance_field, (-1, 3), order='F')
     rotated = np.cross(mesh.face_normals, gradients, axis=1)
+
     dot_products = np.sum(edge_vectors * rotated[face_idx], axis=1)
+
     # select the "right" side of the edge
     # where the angle between the rotated gradient and the edge is in the range [-90, 90]
+    # (the dot-product between the edge and the rotated gradient is larger than 0)
     cut_vertices = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
+
     # convert the vertex trail to a connected path of edges
     cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T[:-1]
-    cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]  # remove degenerate edges
+
+    # remove degenerate edges
+    cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]
+
     return cut_edges
 
 
@@ -155,6 +165,9 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
     Returns:
         ((n, v), float) a condition matrix that makes sure that g(path)=0.
     """
+    if np.any(condition_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge")
+
     # initialize the condition matrix, there are n conditions ahd they should hold for all the points on the mesh
     condition_matrix = np.zeros((len(condition_edges), len(vertices)))
 
