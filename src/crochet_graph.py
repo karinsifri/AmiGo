@@ -84,7 +84,7 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
     # where the angle between the rotated gradient and the edge is in the range [-90, 90]
     cut_vertices = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
     # convert the vertex trail to a connected path of edges
-    cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T
+    cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T[:-1]
     cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]  # remove degenerate edges
     return cut_edges
 
@@ -92,16 +92,17 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
 def get_column_order(mesh: tm.Trimesh, distance_field: np.array, geodesic_path: np.array) -> np.ndarray:
     # TODO: refactor, add documentation
     grad = gpy.grad(mesh.vertices, mesh.faces)
-    grad_operator = grad.toarray().reshape((len(mesh.faces), 3, len(mesh.faces)), order='F')
-    distance_gradient = (grad @ distance_field).reshape((-1, 3), order='F')
+    grad_operator = grad.toarray().reshape((len(mesh.faces), 3, len(mesh.vertices)), order='F')
+    distance_gradient = grad_operator @ distance_field
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
-    A = np.sum(rotated_distance[:, :, None] * grad_operator, axis=1)
-    condition_edges = find_edges_from_points(mesh, geodesic_path)
-    B = np.zeros((len(condition_edges), len(new_v)))
+    A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
+    _, _, face_idx = tm.proximity.closest_point(mesh, geodesic_path)
+    condition_edges = find_edges_from_points(mesh, geodesic_path + rotated_gradient[face_idx] * 1e-16) # "push" to the zero side
+    B = np.zeros((len(condition_edges), len(mesh.vertices)))
     B[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
-        new_v[condition_edges[:, 1]] - geodesic_path, axis=-1)
+        mesh.vertices[condition_edges[:, 1]] - geodesic_path, axis=-1)
     B[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
-        new_v[condition_edges[:, 0]] - geodesic_path, axis=-1)
+        mesh.vertices[condition_edges[:, 0]] - geodesic_path, axis=-1)
     zero_vert = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
     B[zero_vert, condition_edges[zero_vert, 0]] = 1
     return least_squares_with_equality(A, np.ones(len(mesh.faces,)), B)
