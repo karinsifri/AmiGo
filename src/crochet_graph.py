@@ -33,19 +33,32 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     Returns:
         ((n, 2), int) a list of edges the point lay on
     """
-    edges = np.full((len(points), 2), -1, dtype=np.int16)
+    # initialize the returned array
+    found_edges = np.full((len(points), 2), -1, dtype=np.int16)
+
+    # get the face that the point lies on (or the closest face)
     _, _, relevant_face_idx = tm.proximity.closest_point(mesh, points)
     relevant_faces = mesh.faces[relevant_face_idx]
+
+    # check if the point is one of the vertices of the face
     close_to_vertex = np.all(np.isclose(mesh.vertices[relevant_faces], points[:, None]), axis=-1)
+    # returns two lists of indices, the first describes the points in the given list that are close to points,
+    # the second describes which of the face vertices is the point close to
     point_is_vertex = np.where(close_to_vertex)
-    edges[point_is_vertex[0], :] = np.tile(relevant_faces[point_is_vertex[0], point_is_vertex[1]], (2, 1)).T
-    face_edges = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
-    vertex_to_point = points[:, None] - mesh.vertices[relevant_faces]
-    linearly_dependant = np.linalg.matrix_rank(np.stack([face_edges, vertex_to_point], axis=2), tol=1e-10) == 1
+    # fill the returned array with the vertices indices found to be close to the points
+    found_edges[point_is_vertex[0], :] = np.tile(relevant_faces[point_is_vertex[0], point_is_vertex[1]], (2, 1)).T
+
+    # check if the point is on one of the edges in the faces
+    edge_vectors = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
+    vertex_to_point_vectors = points[:, None] - mesh.vertices[relevant_faces]
+    # a point x is on a line between a and b if the vector ab is linearly dependent on the vector ax
+    linearly_dependant = np.linalg.matrix_rank(np.stack([edge_vectors, vertex_to_point_vectors], axis=2), tol=1e-10) == 1
     point_on_edge = np.logical_and(linearly_dependant, ~np.any(close_to_vertex, axis=-1)[:, None])
-    edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
+    # fill the returned array with the edge indices found
+    found_edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
                                                   np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
-    return edges
+
+    return found_edges
 
 
 def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray) -> np.ndarray:
