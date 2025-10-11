@@ -100,7 +100,6 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
 
 def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array) -> np.ndarray:
     """ Compute the column order function on a mesh - a tangent field with constraint of value 0 on the given path
-    todo: documentation & cleanup
 
     Args:
         mesh: the cut mesh object to compute the column order function on
@@ -110,16 +109,28 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     Returns:
         ((v,), float) an array of the value of the g function on the given mesh
     """
-    grad = gpy.grad(mesh.vertices, mesh.faces)
-    grad_operator = grad.toarray().reshape((len(mesh.faces), 3, len(mesh.vertices)), order='F')
+    grad_operator = gpy.grad(mesh.vertices, mesh.faces).toarray().reshape((len(mesh.faces), 3, len(mesh.vertices)),
+                                                                          order='F')
+
     distance_gradient = grad_operator @ distance_field
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
+
+    # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
+
+    # since we cut the mesh on the path, each point on the path is no exactly 2 edges (or vertices), we want to create
+    # a condition that would apply only for one of them. Therefore, to find the edges which the path edges lie on, we
+    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
+    # gradients
     _, _, face_idx = tm.proximity.closest_point(mesh, path)
     condition_edges = find_edges_from_points(mesh,
-                                             path + rotated_gradient[face_idx] * EPSILON)  # "push" to the zero side
+                                             path + rotated_gradient[face_idx] * EPSILON)
+
     B = get_path_condition(mesh, condition_edges, path)
-    return least_squares_with_equality(A, np.ones(len(mesh.faces, )), B)
+
+    column_order = least_squares_with_equality(A, np.ones(len(mesh.faces, )), B)
+
+    return column_order
 
 
 def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
