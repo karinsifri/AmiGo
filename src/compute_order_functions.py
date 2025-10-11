@@ -55,7 +55,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
         ((n, 2), int) a list of edges the point lay on
     """
     # initialize the returned array with the "not_found" value
-    found_edges = np.full((len(points), 2), -1, dtype=np.uint32)
+    found_edges = np.full((len(points), 2), -1, dtype=np.int32)
 
     # get the face that the point lies on (or the closest face)
     _, _, relevant_face_idx = tm.proximity.closest_point(mesh, points)
