@@ -161,7 +161,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
 
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
-    column_order = least_squares_with_equality(A, np.ones(len(mesh.faces, )), B)
+    column_order = least_squares_with_equality(A, np.ones(len(mesh.faces)), B)
 
     return column_order
 
