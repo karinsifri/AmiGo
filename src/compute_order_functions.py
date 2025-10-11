@@ -202,6 +202,7 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
 
     # set the constraint for points that are on a vertex
     on_vertex = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
-    condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
+    if on_vertex.size:
+        condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
 
     return condition_matrix
