@@ -55,7 +55,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
         ((n, 2), int) a list of edges the point lay on
     """
     # initialize the returned array with the "not_found" value
-    found_edges = np.full((len(points), 2), -1, dtype=np.int16)
+    found_edges = np.full((len(points), 2), -1, dtype=np.uint32)
 
     # get the face that the point lies on (or the closest face)
     _, _, relevant_face_idx = tm.proximity.closest_point(mesh, points)
@@ -68,7 +68,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     # the second describes which of the face vertices is the point close to
     point_is_vertex = np.where(close_to_vertex)
 
-    # get the index of the matching vertx in the full mesh
+    # get the index of the matching vertex in the full mesh
     matching_vertices = relevant_faces[point_is_vertex[0], point_is_vertex[1]]
 
     # fill the returned array with the vertices indices found to be close to the points
@@ -80,7 +80,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
 
     # a point x is on a line between a and b if the vector ab is linearly dependent on the vector ax
     linearly_dependant = np.linalg.matrix_rank(np.stack([edge_vectors, vertex_to_point_vectors], axis=2),
-                                               tol=1e-10) == 1
+                                               tol=EPSILON) == 1
     point_on_edge = np.logical_and(linearly_dependant, ~np.any(close_to_vertex, axis=-1)[:, None])
 
     # fill the returned array with the edge indices found
@@ -105,6 +105,9 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
         ((n, 2), int) a list of edges of the cut path
     """
     path_edges = find_edges_from_points(mesh, path)
+
+    if np.any(path_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge or vertex")
 
     _, _, face_idx = tm.proximity.closest_point(mesh, path)
     edge_vectors = mesh.vertices[path_edges[:, 0]] - mesh.vertices[path_edges[:, 1]]
@@ -186,9 +189,9 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
         ((n, v), float) a condition matrix that makes sure that g(path)=0.
     """
     if np.any(condition_edges == -1):
-        raise ValueError("Received points that are not on a mesh edge")
+        raise ValueError("Received points that are not on a mesh edge or vertex")
 
-    # initialize the condition matrix, there are n conditions ahd they should hold for all the points on the mesh
+    # initialize the condition matrix; there are n conditions, and they should hold for all the points on the mesh
     condition_matrix = np.zeros((len(condition_edges), len(vertices)))
 
     # set the constraint for points that are on an edge
