@@ -8,17 +8,37 @@ from src.utils import least_squares_with_equality
 
 
 def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray, np.ndarray]:
-    # TODO: documentation & refactor
+    """ Given a triangle mesh and a seed point, compute the row column order function that can be sampled to compute a
+    crochet graph.
+
+    Args:
+        mesh: a mesh to compute the functions on
+        origin: an index of a vertex in the mesh that will be the seed point for the functions
+
+    Returns:
+        A tuple containing:
+            - cut_mesh: a mesh object the functions are defined on, the mesh will be the same by shape, but it will have
+                a cut where the end of the rows will be
+            - row_order ((v,), float): a numpy array containing the row order functions value for each vertex in the
+                mesh
+            - column_order ((v,), float): a numpy array containing the column order functions value for each vertex in
+                the mesh
+    """
     distance_solver = MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces, t_coef=HEAT_COEFFICIENT)
     distance_field = distance_solver.compute_distance(origin)
+
     path_solver = EdgeFlipGeodesicSolver(mesh.vertices, mesh.faces)
     geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(distance_field))
+
     cut_path = get_path_cut(mesh, distance_field, geodesic_path)
     f_new, v_ind_new = gpy.cut_edges(mesh.faces, cut_path)
     v_new = mesh.vertices[v_ind_new]
-    row_order = distance_field[v_ind_new]
     cut_mesh = tm.Trimesh(vertices=v_new, faces=f_new, process=False)
+
+    row_order = distance_field[v_ind_new]
+
     column_order = get_column_order(cut_mesh, row_order, geodesic_path)
+
     return cut_mesh, row_order, column_order
 
 
@@ -136,7 +156,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     condition_edges = find_edges_from_points(mesh,
                                              path + rotated_gradient[face_idx] * EPSILON)
 
-    B = get_path_condition(mesh, condition_edges, path)
+    B = get_path_condition(mesh.vertices, condition_edges, path)
 
     column_order = least_squares_with_equality(A, np.ones(len(mesh.faces, )), B)
 
