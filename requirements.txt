@@ -1,4 +1,4 @@
-trimesh>=4.6.8
-potpourri3d>=1.2.1
-numpy>=1.26.4
-gpytoolbox>=0.3.4
+trimesh
+potpourri3d
+numpy
+gpytoolbox

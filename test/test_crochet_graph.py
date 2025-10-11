@@ -1,8 +1,7 @@
 import numpy as np
 import trimesh as tm
-from potpourri3d import compute_distance, EdgeFlipGeodesicSolver
 
-from src.crochet_graph import find_edges_from_points, get_path_cut
+from src.compute_order_functions import find_edges_from_points, get_path_condition
 
 
 def test_find_edges_from_points():
@@ -28,33 +27,21 @@ def test_find_edges_from_points():
     np.testing.assert_array_equal(np.sort(expected_result, axis=1), np.sort(result, axis=1))
 
 
-def test_get_path_cut():
-    """ Test the get_path_cut function for known path on a simple mesh """
-    mesh = tm.primitives.Sphere().to_mesh()
-    seed = 423
-    distance_field = compute_distance(mesh.vertices, mesh.faces, seed)
-    path = EdgeFlipGeodesicSolver(mesh.vertices, mesh.faces).find_geodesic_path(seed, np.argmax(distance_field))
-    expected_result = np.array([[423, 425],
-                                [425, 411],
-                                [411, 403],
-                                [403, 419],
-                                [419, 417],
-                                [417, 225],
-                                [225, 595],
-                                [595, 572],
-                                [572, 148],
-                                [148, 573],
-                                [573, 39],
-                                [39, 577],
-                                [577, 149],
-                                [149, 576],
-                                [576, 38],
-                                [38, 547],
-                                [547, 559],
-                                [559, 558],
-                                [558, 472],
-                                [472, 477],
-                                [477, 499],
-                                [499, 423]])
-    result = get_path_cut(mesh, distance_field, path)
-    np.testing.assert_array_equal(expected_result, result)
+def test_get_path_condition():
+    """ Test the get_path_condition function for a simple case """
+    vertices = np.array([[3, 14, 31],
+                         [29, 0, 55],
+                         [37, 4, 73],
+                         [79, 57, 89],
+                         [47, 25, 15]])
+    condition_edges = np.array([[0, 0],
+                                [2, 1],
+                                [3, 2]])
+    path = np.array([[3, 14, 31],           # point is on a vertex
+                     [35, 3, 68.5],         # point is on an edge
+                     [70.6, 46.4, 85.8]])   # point is on an edge
+    expected_result = np.array([[1, 0, 0, 0, 0],
+                                [0, 5.024937810560445, 15.074813431681335, 0, 0],
+                                [0, 0, 13.898201322473357, 55.5928052898934, 0]])
+    actual_result = get_path_condition(vertices, condition_edges, path)
+    np.testing.assert_allclose(expected_result, actual_result)

@@ -31,7 +31,10 @@ def least_squares_with_equality(A: np.ndarray, c: np.ndarray, B: np.ndarray) -> 
     rhs = np.concatenate([2 * A.T @ c, np.zeros(num_constraints)])
 
     # Solve the KKT system
-    solution = np.linalg.solve(kkt_matrix, rhs)
+    try:
+        solution = np.linalg.solve(kkt_matrix, rhs)
+    except np.linalg.LinAlgError as e:
+        raise ValueError("Could not solve the linear system.") from e
 
     # Extract the optimal x
     x = solution[:num_vars]
