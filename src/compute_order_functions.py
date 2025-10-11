@@ -1,22 +1,21 @@
+import gpytoolbox as gpy
 import numpy as np
 import trimesh as tm
-import gpytoolbox as gpy
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
 from src.consts import HEAT_COEFFICIENT, EPSILON
 from src.utils import least_squares_with_equality
 
 
-def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray[np.float64], np.ndarray[np.float64]]:
-    v = mesh.vertices
-    f = mesh.faces
-    distance_solver = MeshHeatMethodDistanceSolver(v, f, t_coef=HEAT_COEFFICIENT)
+def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray, np.ndarray]:
+    # TODO: documentation & refactor
+    distance_solver = MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces, t_coef=HEAT_COEFFICIENT)
     distance_field = distance_solver.compute_distance(origin)
-    path_solver = EdgeFlipGeodesicSolver(v, f)
+    path_solver = EdgeFlipGeodesicSolver(mesh.vertices, mesh.faces)
     geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(distance_field))
     cut_path = get_path_cut(mesh, distance_field, geodesic_path)
-    f_new, v_ind_new = gpy.cut_edges(f, cut_path)
-    v_new = v[v_ind_new]
+    f_new, v_ind_new = gpy.cut_edges(mesh.faces, cut_path)
+    v_new = mesh.vertices[v_ind_new]
     row_order = distance_field[v_ind_new]
     cut_mesh = tm.Trimesh(vertices=v_new, faces=f_new, process=False)
     column_order = get_column_order(cut_mesh, row_order, geodesic_path)
@@ -35,7 +34,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     Returns:
         ((n, 2), int) a list of edges the point lay on
     """
-    # initialize the returned array
+    # initialize the returned array with the "not_found" value
     found_edges = np.full((len(points), 2), -1, dtype=np.int16)
 
     # get the face that the point lies on (or the closest face)
@@ -44,21 +43,29 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
 
     # check if the point is one of the vertices of the face
     close_to_vertex = np.all(np.isclose(mesh.vertices[relevant_faces], points[:, None]), axis=-1)
-    # returns two lists of indices, the first describes the points in the given list that are close to points,
+
+    # returns two lists of indices, the first describes the points in the given list that are close to a vertex,
     # the second describes which of the face vertices is the point close to
     point_is_vertex = np.where(close_to_vertex)
-    # fill the returned array with the vertices indices found to be close to the points
-    found_edges[point_is_vertex[0], :] = np.tile(relevant_faces[point_is_vertex[0], point_is_vertex[1]], (2, 1)).T
 
-    # check if the point is on one of the edges in the faces
+    # get the index of the matching vertx in the full mesh
+    matching_vertices = relevant_faces[point_is_vertex[0], point_is_vertex[1]]
+
+    # fill the returned array with the vertices indices found to be close to the points
+    found_edges[point_is_vertex[0], :] = np.tile(matching_vertices, (2, 1)).T
+
+    # handles case: point is on one of the edges in the faces
     edge_vectors = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
     vertex_to_point_vectors = points[:, None] - mesh.vertices[relevant_faces]
+
     # a point x is on a line between a and b if the vector ab is linearly dependent on the vector ax
-    linearly_dependant = np.linalg.matrix_rank(np.stack([edge_vectors, vertex_to_point_vectors], axis=2), tol=1e-10) == 1
+    linearly_dependant = np.linalg.matrix_rank(np.stack([edge_vectors, vertex_to_point_vectors], axis=2),
+                                               tol=1e-10) == 1
     point_on_edge = np.logical_and(linearly_dependant, ~np.any(close_to_vertex, axis=-1)[:, None])
+
     # fill the returned array with the edge indices found
     found_edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
-                                                  np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
+                                                        np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
 
     return found_edges
 
@@ -93,6 +100,7 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
 
 def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array) -> np.ndarray:
     """ Compute the column order function on a mesh - a tangent field with constraint of value 0 on the given path
+    todo: documentation & cleanup
 
     Args:
         mesh: the cut mesh object to compute the column order function on
@@ -108,9 +116,10 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
     _, _, face_idx = tm.proximity.closest_point(mesh, path)
-    condition_edges = find_edges_from_points(mesh, path + rotated_gradient[face_idx] * EPSILON) # "push" to the zero side
+    condition_edges = find_edges_from_points(mesh,
+                                             path + rotated_gradient[face_idx] * EPSILON)  # "push" to the zero side
     B = get_path_condition(mesh, condition_edges, path)
-    return least_squares_with_equality(A, np.ones(len(mesh.faces,)), B)
+    return least_squares_with_equality(A, np.ones(len(mesh.faces, )), B)
 
 
 def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
