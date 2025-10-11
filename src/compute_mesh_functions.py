@@ -91,20 +91,61 @@ def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray)
     return cut_edges
 
 
-def get_column_order(mesh: tm.Trimesh, distance_field: np.array, geodesic_path: np.array) -> np.ndarray:
-    # TODO: refactor, add documentation
+def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array) -> np.ndarray:
+    """ Compute the column order function on a mesh - a tangent field with constraint of value 0 on the given path
+
+    Args:
+        mesh: the cut mesh object to compute the column order function on
+        distance_field: the field the column order should be tangent to
+        path: points on the mesh that should receive the value 0 in the computed function
+
+    Returns:
+        ((v,), float) an array of the value of the g function on the given mesh
+    """
     grad = gpy.grad(mesh.vertices, mesh.faces)
     grad_operator = grad.toarray().reshape((len(mesh.faces), 3, len(mesh.vertices)), order='F')
     distance_gradient = grad_operator @ distance_field
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
-    _, _, face_idx = tm.proximity.closest_point(mesh, geodesic_path)
-    condition_edges = find_edges_from_points(mesh, geodesic_path + rotated_gradient[face_idx] * EPSILON) # "push" to the zero side
-    B = np.zeros((len(condition_edges), len(mesh.vertices)))
-    B[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
-        mesh.vertices[condition_edges[:, 1]] - geodesic_path, axis=-1)
-    B[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
-        mesh.vertices[condition_edges[:, 0]] - geodesic_path, axis=-1)
-    zero_vert = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
-    B[zero_vert, condition_edges[zero_vert, 0]] = 1
+    _, _, face_idx = tm.proximity.closest_point(mesh, path)
+    condition_edges = find_edges_from_points(mesh, path + rotated_gradient[face_idx] * EPSILON) # "push" to the zero side
+    B = get_path_condition(mesh, condition_edges, path)
     return least_squares_with_equality(A, np.ones(len(mesh.faces,)), B)
+
+
+def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
+    """ Create a condition that makes sure that g(path)=0. the condition is a matrix B that should hold Bg=0.
+
+    if the path point (c_i) lies on an edge (a_i, b_i), we will demand that the linear interpolation of the function
+    on the edge vertices in the path point will be equal to 0.
+        | c_i - a_i | * g(b_i) +  | c_i - b_i | * g(a_i) = 0
+    Therefore, the constraint matrix should contain
+        B_ij:   | c_i - b_i | where the j-th vertex is a_i and
+                | c_i - a_i | where the j-th vertex is b_i
+
+    if the path point (c_i) lies on a vertex, we will demand that the value of the function in this point will be equal
+    to 0. Therefore, the constraint matrix should contain
+        B_ij:   1 when c_i is the j-th vertex in the mesh
+
+    Args:
+        vertices ((v, 3), float): the vertices of the mesh
+        condition_edges ((n, 2), int): the edges of the path condition
+        path ((n, 3), float): the points on the mesh that should receive the value 0 in the computed function
+
+    Returns:
+        ((n, v), float) a condition matrix that makes sure that g(path)=0.
+    """
+    # initialize the condition matrix, there are n conditions ahd they should hold for all the points on the mesh
+    condition_matrix = np.zeros((len(condition_edges), len(vertices)))
+
+    # set the constraint for points that are on an edge
+    condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
+        vertices[condition_edges[:, 1]] - path, axis=-1)
+    condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
+        vertices[condition_edges[:, 0]] - path, axis=-1)
+
+    # set the constraint for points that are on a vertex
+    on_vertex = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
+    condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
+
+    return condition_matrix
