@@ -17,7 +17,7 @@ def vertex_normals(mesh: tm.Trimesh) -> np.ndarray:
     # Accumulate area-weighted face normals for each vertex
     vertex_norm = np.zeros_like(mesh.vertices)
     for i in range(3):
-        np.add.at(vertex_norm, mesh.faces[:, 1], weighted_normals)
+        np.add.at(vertex_norm, mesh.faces[:, i], weighted_normals)
 
     # Normalize to unit length
     scale = np.linalg.norm(vertex_norm, axis=1, keepdims=True)
