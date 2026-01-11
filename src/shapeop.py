@@ -75,9 +75,15 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> tuple[np.ndarray, np.ndarray, np.nda
 
             v = v[:, s_idx]
             d = d[s_idx]
-
+        # Second condition - all ev = 0
+        elif np.all(abs_dd < EPSILON):
+            v1 = e0[face_idx] / np.linalg.norm(e0[face_idx])
+            v2 = np.cross(v1, mesh.face_normals[face_idx])
+            v2 = v2 / np.linalg.norm(v2)
+            v = np.vstack([v1, v2]).T
+            d = [0, 0]
         else:
-            raise RuntimeError(f"did not meet first condition on index {face_idx}")
+            raise RuntimeError(f"did not meet first or second condition on index {face_idx}")
 
         dminf[face_idx] = v[:, 0].T
         dmaxf[face_idx] = v[:, 1].T
