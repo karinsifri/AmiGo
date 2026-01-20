@@ -124,3 +124,32 @@ def edge_basis(mesh: tm.Trimesh) -> scipy.sparse.csr_matrix:
 
     # Stack them
     return scipy.sparse.vstack([b1, b2])
+
+
+def shapeop(mesh: tm.Trimesh) -> scipy.sparse.csr_matrix:
+    nf = len(mesh.faces)
+
+    dminf, dmaxf, kminf, kmaxf = shape_operator_ftf(mesh)
+    eb = edge_basis(mesh)
+
+    dminfb = (eb @ dminf.flatten(order='F')).reshape(-1, 2, order='F')
+    dmaxfb = (eb @ dmaxf.flatten(order='F')).reshape(-1, 2, order='F')
+
+    v11 = dminfb[:, 0]
+    v12 = dminfb[:, 1]
+    v21 = dmaxfb[:, 0]
+    v22 = dmaxfb[:, 1]
+
+    # Create sparse diagonal matrices and stack them into block matrix
+    v = scipy.sparse.bmat([
+        [scipy.sparse.diags(v11, 0, shape=(nf, nf)), scipy.sparse.diags(v12, 0, shape=(nf, nf))],
+        [scipy.sparse.diags(v21, 0, shape=(nf, nf)), scipy.sparse.diags(v22, 0, shape=(nf, nf))]
+    ])
+
+    d = scipy.sparse.bmat([
+        [scipy.sparse.diags(kminf, 0, shape=(nf, nf)), scipy.sparse.csr_matrix((nf, nf))],
+        [scipy.sparse.csr_matrix((nf, nf)), scipy.sparse.diags(kmaxf, 0, shape=(nf, nf))]
+    ])
+
+    return v.T @ d @ v
+
