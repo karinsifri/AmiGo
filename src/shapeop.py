@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 import trimesh as tm
 
 EPSILON = 1e-15
@@ -23,7 +24,7 @@ def vertex_normals(mesh: tm.Trimesh) -> np.ndarray:
 
     # Normalize to unit length
     scale = np.linalg.norm(vertex_norm, axis=1, keepdims=True)
-    scale[scale == 0] = 1  # avoid deciding by zero
+    scale[scale > EPSILON] = 1  # avoid dividing by zero
     vertex_norm = vertex_norm / scale
 
     return vertex_norm
@@ -85,7 +86,7 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> tuple[np.ndarray, np.ndarray, np.nda
         # Third condition - 2 ev = 0
         elif np.all(abs_dd[:2] < EPSILON) and (abs_dd[-1] > EPSILON):
             v1 = v[:, sort_idx][:, -1]
-            dd1 = d[sort_idx][-1]   # different from MATLAB implementation
+            dd1 = d[sort_idx][-1]  # different from MATLAB implementation
             assert np.linalg.norm(v1.T @ mesh.face_normals[face_idx]) < EPSILON
             v2 = np.cross(v1.T, mesh.face_normals[face_idx])
             v2 = v2 / np.linalg.norm(v2)
@@ -103,3 +104,23 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> tuple[np.ndarray, np.ndarray, np.nda
         kmaxf[face_idx] = d[1]
 
     return dminf, dmaxf, kminf, kmaxf
+
+
+def edge_basis(mesh: tm.Trimesh) -> scipy.sparse.csr_matrix:
+    e0 = mesh.vertices[mesh.faces[:, 2]] - mesh.vertices[mesh.faces[:, 1]]  # -> across vertex 0 in the face
+    ne1 = e0 / np.linalg.norm(e0, axis=1, keepdims=True)
+    ne2 = np.cross(mesh.face_normals, ne1, axis=1)
+
+    nf = len(mesh.faces)
+
+    # Construct VFI and VFJ exactly as MATLAB does
+    i = np.tile(np.arange(nf), 3)
+    j = np.arange(nf)
+    j = np.concatenate([j, j + nf, j + 2 * nf])
+
+    # Flatten in Fortran order (column-major) to match MATLAB
+    b1 = scipy.sparse.csr_matrix((ne1.flatten(order='F'), (i, j)), shape=(nf, 3 * nf))
+    b2 = scipy.sparse.csr_matrix((ne2.flatten(order='F'), (i, j)), shape=(nf, 3 * nf))
+
+    # Stack them
+    return scipy.sparse.vstack([b1, b2])
