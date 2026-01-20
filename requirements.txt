@@ -3,4 +3,3 @@ potpourri3d
 numpy
 gpytoolbox
 scipy
-pytest
