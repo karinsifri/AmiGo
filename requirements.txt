@@ -2,3 +2,5 @@ trimesh
 potpourri3d
 numpy
 gpytoolbox
+fastdtw
+scipy
