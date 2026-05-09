@@ -3,7 +3,7 @@ import trimesh as tm
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 
-from consts import EPSILON
+from src.consts import EPSILON
 
 
 def get_row_connectivity(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
