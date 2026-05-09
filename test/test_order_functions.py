@@ -1,7 +1,7 @@
 import numpy as np
 import trimesh as tm
 
-from src.compute_order_functions import find_edges_from_points, get_path_condition
+from src.order_functions import find_edges_from_points, get_path_condition
 
 
 def test_find_edges_from_points():
