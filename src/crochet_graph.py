@@ -26,8 +26,8 @@ def get_row_connectivity(mesh: tm.Trimesh, row_order: np.ndarray, column_order: 
     """
     row_separated_v = calculate_crochet_graph_vertices(mesh, row_order, column_order, stitch_size)
 
-    connectivity = [np.array(fastdtw(row_separated_v[idx], row_separated_v[idx + 1], dist=euclidean)[1]) for idx in
-                    range(len(row_separated_v) - 1)]
+    connectivity = [np.array(fastdtw(r1, r2, dist=euclidean)[1]) for r1, r2 in
+                    zip(row_separated_v[:-1], row_separated_v[1:])]
 
     return connectivity
 
@@ -107,7 +107,7 @@ def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, co
     """
     grid_u, grid_v = np.meshgrid(np.arange(0, row_order.max(), stitch_size),
                                  np.arange(0, column_order.max(), stitch_size))
-    u_grid_idx, _ = np.meshgrid(np.arange(grid_u.shape[1]), np.arange(grid_u.shape[0]))
+    u_grid_idx = np.tile(np.arange(grid_u.shape[1]), grid_u.shape[0])
 
     flatten_mesh = tm.Trimesh(np.vstack([row_order, column_order, np.zeros_like(row_order)]).T, mesh.faces)
 
@@ -125,7 +125,7 @@ def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, co
 
     sampled_3d = tm.triangles.barycentric_to_points(mesh.vertices[mesh.faces[face_id]], sampled_barycentric)
 
-    row_idx = np.append(u_grid_idx.ravel(), u_grid_idx.max() + 1)[on_mesh]
+    row_idx = np.append(u_grid_idx, u_grid_idx.max() + 1)[on_mesh]
 
     row_separated = [sampled_3d[row_idx == i] for i in np.arange(row_idx.max() + 1)]
 
