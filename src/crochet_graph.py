@@ -3,6 +3,8 @@ import trimesh as tm
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 
+from consts import EPSILON
+
 
 def get_row_connectivity(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
                          stitch_size: float) -> list[np.ndarray]:
@@ -103,27 +105,28 @@ def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, co
         A list of length ``n_rows`` where ``result[i]`` is an ``(k_i, 3)`` float array of
         3D stitch positions belonging to the i-th row (u-index i).
     """
-    samples_u, samples_v = np.meshgrid(np.arange(0, row_order.max(), stitch_size),
-                                       np.arange(0, column_order.max(), stitch_size))
-    i_idx, j_idx = np.meshgrid(np.arange(samples_u.shape[1]), np.arange(samples_u.shape[0]))
+    grid_u, grid_v = np.meshgrid(np.arange(0, row_order.max(), stitch_size),
+                                 np.arange(0, column_order.max(), stitch_size))
+    u_grid_idx, _ = np.meshgrid(np.arange(grid_u.shape[1]), np.arange(grid_u.shape[0]))
 
-    flatten_mesh = tm.Trimesh(np.hstack([row_order, column_order, np.zeros_like(row_order)]), mesh.faces)
+    flatten_mesh = tm.Trimesh(np.vstack([row_order, column_order, np.zeros_like(row_order)]).T, mesh.faces)
 
-    sampled_points = np.stack((np.append(samples_u, row_order.max()), np.append(samples_v, 0),
-                               np.zeros((samples_u.size + 1,))), axis=-1)
+    sampled_points = np.stack((np.append(grid_u.ravel(), row_order.max()),
+                               np.append(grid_v.ravel(), 0),
+                               np.zeros((grid_u.size + 1,))), axis=-1)
 
     _, point_dist, face_id = tm.proximity.closest_point(flatten_mesh, sampled_points)
-    sampled_points = sampled_points[point_dist < 1e-10]
-    face_id = face_id[point_dist < 1e-10]
+    on_mesh = point_dist < EPSILON
+    sampled_points = sampled_points[on_mesh]
+    face_id = face_id[on_mesh]
 
-    sampled_baricentric = tm.triangles.points_to_barycentric(flatten_mesh.vertices[mesh.faces[face_id]],
+    sampled_barycentric = tm.triangles.points_to_barycentric(flatten_mesh.vertices[mesh.faces[face_id]],
                                                              sampled_points)
 
-    sampled_3d = tm.triangles.barycentric_to_points(mesh.vertices[mesh.faces[face_id]], sampled_baricentric)
+    sampled_3d = tm.triangles.barycentric_to_points(mesh.vertices[mesh.faces[face_id]], sampled_barycentric)
 
-    left_i, left_j = np.append(i_idx, i_idx.max() + 1).ravel()[point_dist < 1e-10], np.append(j_idx, 0).ravel()[
-        point_dist < 1e-10]
+    row_idx = np.append(u_grid_idx.ravel(), u_grid_idx.max() + 1)[on_mesh]
 
-    row_separated = [sampled_3d[left_i == i] for i in np.arange(left_i.max() + 1)]
+    row_separated = [sampled_3d[row_idx == i] for i in np.arange(row_idx.max() + 1)]
 
     return row_separated
