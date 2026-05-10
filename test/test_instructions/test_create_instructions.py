@@ -14,6 +14,11 @@ from instructions.create_instructions import dtw_to_stitches, create_final_instr
     (np.array([[0, 0], [1, 1]]), ['sc', 'sc'])
 ])
 def test_dtw_to_stitches(dtw: np.ndarray, stitches: list[str]) -> None:
+    """Tests the dtw_to_stitches function for a valid DTW path.
+
+    Verifies that a realistic DTW alignment path between two crochet graph rows is correctly
+    translated into a sequence of stitch instructions, including 'sc', 'inc', and 'dec' stitches.
+    """
     assert dtw_to_stitches(dtw) == stitches
 
 
@@ -25,6 +30,12 @@ def test_dtw_to_stitches(dtw: np.ndarray, stitches: list[str]) -> None:
     np.array([[0, 0], [0, 0], [1, 1]])  # stationary step
 ])
 def test_dtw_to_stitches_case_failed(dtw: np.ndarray) -> None:
+    """Tests that dtw_to_stitches raises ValueError for invalid DTW paths.
+
+    Ensures that paths containing steps larger than 1, negative steps, stationary steps, or
+    mixed inc+dec within a single stitch segment all raise a ValueError with the message
+    'Invalid Stitch'.
+    """
     with pytest.raises(ValueError) as error_info:
         dtw_to_stitches(dtw)
     assert str(error_info.value) == 'Invalid Stitch'
@@ -38,4 +49,10 @@ def test_dtw_to_stitches_case_failed(dtw: np.ndarray) -> None:
      'rows 0-1: a\nrows 2-3: b\nrows 4-6: c\nrow 7: a\nrow 8: b\nrow 9: c'),
 ])
 def test_create_final_instructions(rows: list[str], expected_res: str) -> None:
+    """Tests the create_final_instructions function for various row instruction sequences.
+
+    Verifies that consecutive identical instructions are collapsed into a range format
+    ('rows X-Y: ...'), while non-repeated instructions are each printed individually
+    ('row X: ...').
+    """
     assert create_final_instructions(rows) == expected_res
