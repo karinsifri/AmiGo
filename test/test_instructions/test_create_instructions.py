@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from instructions.create_instructions import dtw_to_stitches
+from instructions.create_instructions import dtw_to_stitches, create_final_instructions
 
 
 @pytest.mark.parametrize('dtw, stitches', [
@@ -27,3 +27,14 @@ def test_dtw_to_stitches_case_failed(dtw: np.ndarray) -> None:
     with pytest.raises(ValueError) as error_info:
         dtw_to_stitches(dtw)
     assert str(error_info.value) == 'Invalid Stitch'
+
+
+@pytest.mark.parametrize('rows, expected_res', [
+    (['a', 'a', 'a', 'b', 'a'], 'rows 0-2: a\nrow 3: b\nrow 4: a\n'),
+    (['a', 'b', 'c', 'a', 'b', 'c', 'a', 'b', 'c'],
+     'row 0: a\nrow 1: b\nrow 2: c\nrow 3: a\nrow 4: b\nrow 5: c\nrow 6: a\nrow 7: b\nrow 8: c\n'),
+    (['a', 'a', 'b', 'b', 'c', 'c', 'c', 'a', 'b', 'c'],
+     'rows 0-1: a\nrows 2-3: b\nrows 4-6: c\nrow 7: a\nrow 8: b\nrow 9: c\n'),
+])
+def test_create_final_instructions(rows: list[str], expected_res: str) -> None:
+    assert create_final_instructions(rows) == expected_res

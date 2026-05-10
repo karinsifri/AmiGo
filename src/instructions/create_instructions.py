@@ -24,7 +24,7 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     # calculate differences
     diff = np.diff(dtw_path, axis=0)
 
-    if set(diff.ravel().tolist()) - {0, 1}:     # check for invalid path
+    if set(diff.ravel().tolist()) - {0, 1}:  # check for invalid path
         raise ValueError("Invalid Stitch")
 
     # encode each diff as a digit: [0,1]=1 (inc), [1,0]=2 (dec), [1,1]=3 (stitch start)
@@ -37,13 +37,37 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     for s in raw_stitches:
         if set(s) - {'1', '2'} or ('1' in s and '2' in s):  # mixed inc+dec within one stitch is invalid
             raise ValueError("Invalid Stitch")
-        elif not s:             # empty string
+        elif not s:  # empty string
             stitches.append("sc")
-        elif "1" in s:          # string composed by 1's
+        elif "1" in s:  # string composed by 1's
             count = s.count('1')
             stitches.append("inc" if count == 1 else f"inc{count}")
-        elif "2" in s:          # string composed by 2's
+        elif "2" in s:  # string composed by 2's
             count = s.count('2')
             stitches.append("dec" if count == 1 else f"dec{count}")
 
     return stitches
+
+
+def create_final_instructions(rows_instructions: list[str]) -> str:
+    prog = ''
+    i = 0
+    n = len(rows_instructions)
+
+    while i < n:
+        # Only fold flat instruction strings, not loops
+        if isinstance(rows_instructions[i], str):
+            j = i + 1
+            while j < n and rows_instructions[j] == rows_instructions[i]:
+                j += 1
+            repeat_count = j - i
+            if repeat_count > 1:
+                prog += f"rows {i}-{j-1}: {rows_instructions[i]}\n"
+            else:
+                prog += f"row {i}: {rows_instructions[i]}\n"
+            i = j
+        else:
+            prog += f"row {i}: {rows_instructions[i]}\n"
+            i += 1
+
+    return prog
