@@ -1,3 +1,5 @@
+from itertools import groupby
+
 import numpy as np
 
 
@@ -21,53 +23,52 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     Returns:
         a list of the stitches matching to the edges between the given crochet graph rows
     """
-    # calculate differences
-    diff = np.diff(dtw_path, axis=0)
+    step_diffs = np.diff(dtw_path, axis=0)
 
-    if set(diff.ravel().tolist()) - {0, 1}:  # check for invalid path
+    if set(step_diffs.ravel().tolist()) - {0, 1}:  # each component must be 0 or 1
         raise ValueError("Invalid Stitch")
 
     # encode each diff as a digit: [0,1]=1 (inc), [1,0]=2 (dec), [1,1]=3 (stitch start)
-    con_type_str = "".join((diff[:, 0] * 2 + diff[:, 1]).astype(str))
+    encoded_steps = "".join((step_diffs[:, 0] * 2 + step_diffs[:, 1]).astype(str))
 
-    # the start of every stitch is always an advancement of both rows
-    raw_stitches = con_type_str.split("3")
+    # each stitch starts with a [1,1] step (encoded as "3"); split on it to get each stitch's payload
+    stitch_payloads = encoded_steps.split("3")
 
     stitches = []
-    for s in raw_stitches:
-        if set(s) - {'1', '2'} or ('1' in s and '2' in s):  # mixed inc+dec within one stitch is invalid
+    for payload in stitch_payloads:
+        if set(payload) - {'1', '2'} or ('1' in payload and '2' in payload):  # mixed inc+dec is invalid
             raise ValueError("Invalid Stitch")
-        elif not s:  # empty string
+        elif not payload:
             stitches.append("sc")
-        elif "1" in s:  # string composed by 1's
-            count = s.count('1')
-            stitches.append("inc" if count == 1 else f"inc{count}")
-        elif "2" in s:  # string composed by 2's
-            count = s.count('2')
-            stitches.append("dec" if count == 1 else f"dec{count}")
+        elif "1" in payload:
+            extra_inc_count = payload.count('1')
+            stitches.append("inc" if extra_inc_count == 1 else f"inc{extra_inc_count}")
+        elif "2" in payload:
+            extra_dec_count = payload.count('2')
+            stitches.append("dec" if extra_dec_count == 1 else f"dec{extra_dec_count}")
 
     return stitches
 
 
 def create_final_instructions(rows_instructions: list[str]) -> str:
-    prog = ''
-    i = 0
-    n = len(rows_instructions)
+    """Format a per-row instruction list into a human-readable string, collapsing consecutive
+    identical rows into a range.
 
-    while i < n:
-        # Only fold flat instruction strings, not loops
-        if isinstance(rows_instructions[i], str):
-            j = i + 1
-            while j < n and rows_instructions[j] == rows_instructions[i]:
-                j += 1
-            repeat_count = j - i
-            if repeat_count > 1:
-                prog += f"rows {i}-{j-1}: {rows_instructions[i]}\n"
-            else:
-                prog += f"row {i}: {rows_instructions[i]}\n"
-            i = j
+    Args:
+        rows_instructions: one instruction string per row, in order
+
+    Returns:
+        A formatted string where runs of identical instructions are written as
+        ``"rows <start>-<end>: <instruction>"`` and singletons as ``"row <i>: <instruction>"``.
+    """
+    lines = []
+    start_row = 0
+    for instruction, group in groupby(rows_instructions):
+        run_length = sum(1 for _ in group)
+        end_row = start_row + run_length - 1
+        if run_length == 1:
+            lines.append(f"row {start_row}: {instruction}")
         else:
-            prog += f"row {i}: {rows_instructions[i]}\n"
-            i += 1
-
-    return prog
+            lines.append(f"rows {start_row}-{end_row}: {instruction}")
+        start_row += run_length
+    return "\n".join(lines)
