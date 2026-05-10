@@ -10,7 +10,8 @@ from instructions.create_instructions import dtw_to_stitches, create_final_instr
                [20, 19], [21, 20], [22, 21], [23, 22], [24, 23], [24, 24], [25, 25], [26, 26]]),
      ['sc', 'sc', 'inc', 'sc', 'sc', 'sc', 'inc', 'sc', 'sc', 'sc', 'sc', 'sc', 'sc', 'sc', 'sc', 'dec3', 'sc',
       'sc', 'sc', 'sc', 'sc', 'inc', 'sc', 'sc']
-     )
+     ),
+    (np.array([[0, 0], [1, 1]]), ['sc', 'sc'])
 ])
 def test_dtw_to_stitches(dtw: np.ndarray, stitches: list[str]) -> None:
     assert dtw_to_stitches(dtw) == stitches
