@@ -41,6 +41,18 @@ def test_dtw_to_stitches_case_failed(dtw: np.ndarray) -> None:
     assert str(error_info.value) == 'Invalid Stitch'
 
 
+@pytest.mark.parametrize('dtw', [
+    np.array([0, 1, 2]),                       # 1D array
+    np.array([[0, 0, 0], [1, 1, 1]]),          # 3 columns
+    np.zeros((3, 1)),                          # 1 column
+    [[0, 0], [1, 1]],                          # list, not ndarray
+])
+def test_dtw_to_stitches_invalid_shape(dtw):
+    """Tests that dtw_to_stitches raises ValueError for inputs with the wrong shape or type."""
+    with pytest.raises(ValueError, match="dtw_path must be a 2D array with shape"):
+        dtw_to_stitches(dtw)
+
+
 @pytest.mark.parametrize('rows, expected_res', [
     (['a', 'a', 'a', 'b', 'a'], 'rows 0-2: a\nrow 3: b\nrow 4: a'),
     (['a', 'b', 'c', 'a', 'b', 'c', 'a', 'b', 'c'],

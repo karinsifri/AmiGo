@@ -23,6 +23,9 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     Returns:
         a list of the stitches matching to the edges between the given crochet graph rows
     """
+    if not isinstance(dtw_path, np.ndarray) or dtw_path.ndim != 2 or dtw_path.shape[1] != 2:
+        raise ValueError("dtw_path must be a 2D array with shape (n, 2)")
+
     step_diffs = np.diff(dtw_path, axis=0)
 
     if set(step_diffs.ravel().tolist()) - {0, 1}:  # each component must be 0 or 1
