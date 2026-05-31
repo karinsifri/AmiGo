@@ -24,7 +24,7 @@ def vertex_normals(mesh: tm.Trimesh) -> np.ndarray:
 
     # Normalize to unit length
     scale = np.linalg.norm(vertex_norm, axis=1, keepdims=True)
-    scale[scale > EPSILON] = 1  # avoid dividing by zero
+    scale = np.where(scale < EPSILON, 1.0, scale)  # avoid dividing by zero
     vertex_norm = vertex_norm / scale
 
     return vertex_norm
