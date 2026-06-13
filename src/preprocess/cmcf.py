@@ -8,53 +8,50 @@ from src.shapeop import shape_operator_ftf
 
 
 def smooth_craters(mesh: tm.Trimesh) -> tm.Trimesh:
-    tstep = mesh.edges_unique_length.mean() ** 2
+    """Apply modified mean-curvature flow to concave elliptic (crater) regions.
 
-    W = - gpy.cotangent_laplacian(mesh.vertices, mesh.faces)
+    Implements the conformalized mean-curvature flow (CMCF) of Kazhdan, Solomon,
+    and Ben-Chen (2012) restricted to faces where both principal curvatures are
+    non-positive: K = k_min * k_max >= 0 and H = (k_min + k_max) / 2 <= 0.
+    This combination identifies bowl-shaped concavities — the surface curves
+    inward in every direction.
 
-    for i in range(250):
-        dminf, dmaxf, kminf, kmaxf = shape_operator_ftf(mesh)
-        HhfaceSO = 0.5 * (kminf + kmaxf)  # mean curvature on faces
-        GgfaceSO = kminf * kmaxf  # gaussian curvature on faces
-
-        area_to_change = (GgfaceSO >= 0) & (HhfaceSO <= 0)
-        vertices_to_change = np.unique(mesh.faces[np.nonzero(area_to_change)])
-
-        if len(vertices_to_change) == 0:
-            break
-
-        ff = compute_distance_multisource(mesh.vertices, mesh.faces, vertices_to_change)
-        sigma = 3 * mesh.edges_unique_length.mean()
-        gaussianff = np.exp(-ff / sigma)
-
-        M = sp.spdiags(vertex_areas(mesh), 0, len(mesh.vertices), len(mesh.vertices))
-        V_ = sp.linalg.spsolve(sp.csc_matrix(M - tstep * sp.diags(gaussianff) @ W), M @ mesh.vertices)
-
-        m_ = tm.Trimesh(V_, mesh.faces)
-
-        mesh = m_
-
-    return mesh
-
-
-""" helper functions """
-
-
-def vertex_areas(mesh: tm.Trimesh) -> np.ndarray:
-    """
-    Compute vertex areas from mass matrix.
-
-    Parameters:
-    -----------
-    mesh : trimesh.Trimesh
-        A trimesh object
+    Args:
+        mesh: Input triangular mesh. Must be a closed orientable manifold.
 
     Returns:
-    --------
-    va : numpy.ndarray
-        Vertex areas
+        A new Trimesh with the same face connectivity as the input but with
+        vertex positions modified to smooth out all crater regions.
     """
-    M = gpy.massmatrix(mesh.vertices, mesh.faces, 'full')
-    va = np.array(M.sum(axis=1)).flatten()
-    return va
+    time_step = mesh.edges_unique_length.mean() ** 2
 
+    laplacian = -gpy.cotangent_laplacian(mesh.vertices, mesh.faces)
+
+    for _ in range(250):
+        _, _, min_curvature_per_face, max_curvature_per_face = shape_operator_ftf(mesh)
+
+        mean_curvature_per_face = 0.5 * (min_curvature_per_face + max_curvature_per_face)
+        gaussian_curvature_per_face = min_curvature_per_face * max_curvature_per_face
+
+        crater_face_mask = (gaussian_curvature_per_face >= 0) & (mean_curvature_per_face <= 0)
+        crater_vertex_indices = np.unique(mesh.faces[np.nonzero(crater_face_mask)])
+
+        if len(crater_vertex_indices) == 0:
+            break
+
+        dist_to_crater = compute_distance_multisource(mesh.vertices, mesh.faces, crater_vertex_indices)
+
+        gaussian_bandwidth = 3 * mesh.edges_unique_length.mean()
+        crater_influence = np.exp(-dist_to_crater / gaussian_bandwidth)
+
+        full_mass_matrix = gpy.massmatrix(mesh.vertices, mesh.faces, 'full')
+        per_vertex_area = np.array(full_mass_matrix.sum(axis=1)).flatten()
+        mass_matrix = sp.spdiags(per_vertex_area, 0, len(mesh.vertices), len(mesh.vertices))
+
+        lhs = sp.csc_matrix(mass_matrix - time_step * sp.diags(crater_influence) @ laplacian)
+        rhs = mass_matrix @ mesh.vertices
+        new_vertices = sp.linalg.spsolve(lhs, rhs)
+
+        mesh = tm.Trimesh(new_vertices, mesh.faces)
+
+    return mesh
