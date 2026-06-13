@@ -4,7 +4,7 @@ import scipy.sparse as sp
 import trimesh as tm
 from potpourri3d import compute_distance_multisource
 
-from shapeop import shape_operator_ftf
+from src.shapeop import shape_operator_ftf
 
 
 def smooth_craters(mesh: tm.Trimesh) -> tm.Trimesh:
