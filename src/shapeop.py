@@ -3,20 +3,23 @@ from typing import NamedTuple
 import numpy as np
 import scipy.sparse
 import trimesh as tm
+from trimesh.geometry import index_sparse
 
 from src.consts import EPSILON
 
-# Matches MATLAB's 1e-15 threshold for eigenvalue near-zero detection.
-# Kept separate from EPSILON because geometric tolerances (vertex distances,
-# normal magnitudes) are coarser than floating-point near-zero in a 3×3 matrix.
-_EIG_EPS = 1e-15
-
 
 class CurvatureResult(NamedTuple):
-    dminf: np.ndarray  # (nf, 3)  min-curvature principal directions
-    dmaxf: np.ndarray  # (nf, 3)  max-curvature principal directions
-    kminf: np.ndarray  # (nf,)    min principal curvatures
-    kmaxf: np.ndarray  # (nf,)    max principal curvatures
+    """
+    Attributes:
+        dminf (ndarray (nf, 3)): min-curvature principal directions
+        dmaxf (ndarray (nf, 3)): max-curvature principal directions
+        kminf (ndarray (nf,)): min principal curvatures
+        kmaxf (ndarray (nf,)): max principal curvatures
+    """
+    dminf: np.ndarray
+    dmaxf: np.ndarray
+    kminf: np.ndarray
+    kmaxf: np.ndarray
 
 
 def vertex_normals(mesh: tm.Trimesh) -> np.ndarray:
@@ -28,19 +31,13 @@ def vertex_normals(mesh: tm.Trimesh) -> np.ndarray:
     Returns:
         Array of shape (nv, 3) with unit-length per-vertex normals.
     """
-    nv, nf = len(mesh.vertices), len(mesh.faces)
+    nv = len(mesh.vertices)
     weighted_normals = mesh.face_normals * mesh.area_faces[:, None]  # (nf, 3)
 
-    # Build a (nv × nf) incidence matrix where entry [v, f] = 1 whenever vertex v
-    # belongs to face f. Then face_vertex_mat @ weighted_normals accumulates each
-    # face's weighted normal into its three vertices — equivalent to MATLAB's
-    # sparse(I, J, S, nv, 3). Faster than np.add.at because the sparse matmul
-    # runs in compiled C.
-    vertex_indices = mesh.faces.flatten()          # (3·nf,) vertex index for each (face, corner)
-    face_indices = np.repeat(np.arange(nf), 3)    # (3·nf,) face index for each (face, corner)
-    face_vertex_mat = scipy.sparse.csr_matrix(
-        (np.ones(3 * nf), (vertex_indices, face_indices)), shape=(nv, nf)
-    )
+    # (nv × nf) adjacency matrix: entry [v, f] = 1 whenever vertex v belongs to face f.
+    face_vertex_mat = index_sparse(nv, mesh.faces)
+
+    # Multiplying by weighted_normals accumulates each face's contribution into its vertices.
     normals = np.asarray(face_vertex_mat @ weighted_normals)  # (nv, 3)
 
     scale = np.linalg.norm(normals, axis=1, keepdims=True)
@@ -80,9 +77,10 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
 
     e0, e1, e2 = _edge_vectors(mesh)
 
-    # cross(face_normals, e) rotates e by 90° within the tangent plane, equivalent to
-    # MATLAB's mesh.rotate_vf(). Scaling by 0.5/area gives the FTF gradient weight.
     inv_face_areas = (1.0 / mesh.area_faces)[:, None]  # (nf, 1)
+
+    # cross(face_normals, e) rotates e by 90° within the tangent plane,
+    # scaling by 0.5/area gives the FTF gradient weight.
     edge_gradients = [0.5 * inv_face_areas * np.cross(face_normals, e) for e in (e0, e1, e2)]  # each (nf, 3)
 
     vertex_norms = vertex_normals(mesh)
@@ -97,6 +95,7 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
     # Project into the tangent plane: tangent_proj[f] = I − face_normals[f]⊗face_normals[f]
     # zeroes the normal component. np.eye(3) broadcasts from (3,3) to (nf,3,3).
     tangent_proj = np.eye(3) - np.einsum('fi,fj->fij', face_normals, face_normals)  # (nf, 3, 3)
+
     shape_mat = tangent_proj @ shape_mat  # batched (nf,3,3) @ (nf,3,3) — @ broadcasts over axis 0
 
     # Symmetrize: the shape operator is self-adjoint; small asymmetry is numerical noise.
@@ -107,16 +106,18 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
     eigenvalues, eigenvectors = np.linalg.eigh(shape_mat)  # (nf, 3), (nf, 3, 3) columns = eigenvectors
 
     # Sort per-face eigenvalues by absolute value to classify degenerate configurations.
-    abs_eigenvalues = np.abs(eigenvalues)                                              # (nf, 3)
-    abs_sort_idx = np.argsort(abs_eigenvalues, axis=1)                                # (nf, 3)
+    abs_eigenvalues = np.abs(eigenvalues)  # (nf, 3)
+    abs_sort_idx = np.argsort(abs_eigenvalues, axis=1)  # (nf, 3)
     sorted_abs_eigenvalues = np.take_along_axis(abs_eigenvalues, abs_sort_idx, axis=1)  # (nf, 3) ascending |d|
 
-    # Three mutually exhaustive cases (mirrors the original per-face if/elif chain):
+    # Three mutually exhaustive cases:
     # mask_flat:        all |d| ≈ 0 → fully flat region
     # mask_one_curved:  exactly one |d| nonzero → one principal curvature, one flat direction
     # mask_generic:     everything else (normal case or one near-zero from the tangent projection)
-    mask_flat = np.all(sorted_abs_eigenvalues < _EIG_EPS, axis=1)
-    mask_one_curved = (sorted_abs_eigenvalues[:, 1] < _EIG_EPS) & (sorted_abs_eigenvalues[:, 2] >= _EIG_EPS)
+    mask_flat = np.all(sorted_abs_eigenvalues < EPSILON, axis=1)
+    # No need to check [:, 0] < EPSILON: ascending sort guarantees [:, 0] ≤ [:, 1],
+    # so [:, 1] < EPSILON implies [:, 0] < EPSILON.
+    mask_one_curved = (sorted_abs_eigenvalues[:, 1] < EPSILON) & (sorted_abs_eigenvalues[:, 2] >= EPSILON)
     mask_generic = ~mask_flat & ~mask_one_curved
 
     dminf = np.zeros((nf, 3))
@@ -127,44 +128,44 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
     # ------------------------------------------------------------------ #
     # Case 1 — generic, or one zero-curvature direction
     # ------------------------------------------------------------------ #
-    # After tangent projection one of the three eigenvectors lies approximately
-    # along the face normal and must be discarded. We identify it as the eigenvector
-    # whose projection onto the in-plane edge span {e0, e1} has the smallest norm.
     if np.any(mask_generic):
-        eigvecs = eigenvectors[mask_generic]    # (n_generic, 3, 3)
-        eigenvals = eigenvalues[mask_generic]   # (n_generic, 3)
+        # After tangent projection one of the three eigenvectors lies approximately
+        # along the face normal and must be discarded. We identify it as the eigenvector
+        # whose projection onto the in-plane edge span {e0, e1} has the smallest norm.
+        eigvecs = eigenvectors[mask_generic]  # (n_generic, 3, 3)
+        eigenvals = eigenvalues[mask_generic]  # (n_generic, 3)
         n_generic = int(mask_generic.sum())
 
-        # Stack edge vectors as a 3×2 basis per face, then project each eigenvector
-        # (row of eigvecsᵀ) onto this basis. Smallest norm → most "normal-like" eigenvector.
+        # Stack edge vectors as a 3×2 basis per face, then project each eigenvector (row of eigvecsᵀ) onto this basis.
         edge_span = np.stack([e0[mask_generic], e1[mask_generic]], axis=-1)  # (n_generic, 3, 2)
+
         # eigvecs.transpose(0,2,1) turns eigenvectors into rows → (n_generic, 3, 3)
         # batched @ edge_span (n_generic, 3, 2) → (n_generic, 3, 2): row i is the 2-D projection of eigenvector i
         normal_proj_norms = np.linalg.norm(eigvecs.transpose(0, 2, 1) @ edge_span, axis=-1)  # (n_generic, 3)
+
+        # Smallest norm → most "normal-like" eigenvector.
         normal_col = np.argmin(normal_proj_norms, axis=1)  # (n_generic,) column index of the normal eigenvector
 
         # Look up which two column indices to keep after removing normal_col.
+        # For example, if we eliminate index 0 - we need to keep indices [1, 2] etc...
         kept_col_pairs = np.array([[1, 2], [0, 2], [0, 1]])
         kept_cols = kept_col_pairs[normal_col]  # (n_generic, 2)
 
         # Gather the two kept eigenvectors per face with 3-D advanced indexing:
         # tangent_eigvecs[f, j, k] = eigvecs[f, j, kept_cols[f, k]]
         face_sel = np.arange(n_generic)[:, np.newaxis, np.newaxis]  # (n_generic, 1, 1)
-        row_sel = np.arange(3)[np.newaxis, :, np.newaxis]           # (1, 3, 1)
-        col_sel = kept_cols[:, np.newaxis, :]                        # (n_generic, 1, 2)
-        tangent_eigvecs = eigvecs[face_sel, row_sel, col_sel]        # (n_generic, 3, 2)
+        row_sel = np.arange(3)[np.newaxis, :, np.newaxis]  # (1, 3, 1)
+        col_sel = kept_cols[:, np.newaxis, :]  # (n_generic, 1, 2)
+        tangent_eigvecs = eigvecs[face_sel, row_sel, col_sel]  # (n_generic, 3, 2)
         tangent_eigenvals = eigenvals[np.arange(n_generic)[:, None], kept_cols]  # (n_generic, 2)
 
-        # Sort by algebraic value so kminf ≤ kmaxf.
-        sort_order = np.argsort(tangent_eigenvals, axis=1)                                    # (n_generic, 2)
-        sort_order_3d = np.broadcast_to(sort_order[:, np.newaxis, :], (n_generic, 3, 2))     # broadcast to match tangent_eigvecs shape
-        sorted_eigvecs = np.take_along_axis(tangent_eigvecs, sort_order_3d, axis=2)          # (n_generic, 3, 2)
-        sorted_eigenvals = np.take_along_axis(tangent_eigenvals, sort_order, axis=1)         # (n_generic, 2)
-
-        dminf[mask_generic] = sorted_eigvecs[:, :, 0]
-        dmaxf[mask_generic] = sorted_eigvecs[:, :, 1]
-        kminf[mask_generic] = sorted_eigenvals[:, 0]
-        kmaxf[mask_generic] = sorted_eigenvals[:, 1]
+        # kept_col_pairs always selects indices in ascending order ([1,2], [0,2], [0,1]),
+        # and eigh returns eigenvalues in ascending algebraic order, so tangent_eigenvals
+        # is already sorted — no explicit sort needed here.
+        dminf[mask_generic] = tangent_eigvecs[:, :, 0]
+        dmaxf[mask_generic] = tangent_eigvecs[:, :, 1]
+        kminf[mask_generic] = tangent_eigenvals[:, 0]
+        kmaxf[mask_generic] = tangent_eigenvals[:, 1]
 
     # ------------------------------------------------------------------ #
     # Case 2 — fully flat (all |d| ≈ 0)
@@ -187,34 +188,32 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
     # The second tangent direction is recovered via the cross product with face_normals.
     if np.any(mask_one_curved):
         n_one_curved = int(mask_one_curved.sum())
-        eigvecs = eigenvectors[mask_one_curved]      # (n_one_curved, 3, 3)
-        eigenvals = eigenvalues[mask_one_curved]     # (n_one_curved, 3)
+        eigvecs = eigenvectors[mask_one_curved]  # (n_one_curved, 3, 3)
+        eigenvals = eigenvalues[mask_one_curved]  # (n_one_curved, 3)
         abs_sort_idx_subset = abs_sort_idx[mask_one_curved]  # (n_one_curved, 3) column indices sorted by |d|
 
         # abs_sort_idx_subset[:, 2] is the column of the eigenvector with the largest |d|.
         # Advanced indexing: principal_dir[f, j] = eigvecs[f, j, dominant_col[f]]
-        dominant_col = abs_sort_idx_subset[:, 2]                          # (n_one_curved,)
-        face_sel = np.arange(n_one_curved)[:, np.newaxis]                 # (n_one_curved, 1)
-        row_sel = np.arange(3)[np.newaxis, :]                             # (1, 3)
+        dominant_col = abs_sort_idx_subset[:, 2]  # (n_one_curved,)
+        face_sel = np.arange(n_one_curved)[:, np.newaxis]  # (n_one_curved, 1)
+        row_sel = np.arange(3)[np.newaxis, :]  # (1, 3)
         principal_dir = eigvecs[face_sel, row_sel, dominant_col[:, np.newaxis]]  # (n_one_curved, 3)
-        principal_curv = eigenvals[np.arange(n_one_curved), dominant_col]        # (n_one_curved,)
+        principal_curv = eigenvals[np.arange(n_one_curved), dominant_col]  # (n_one_curved,)
 
         flat_dir = np.cross(principal_dir, face_normals[mask_one_curved])
         flat_dir /= np.linalg.norm(flat_dir, axis=1, keepdims=True)
 
-        curvature_pair = np.stack([principal_curv, np.zeros(n_one_curved)], axis=1)  # (n_one_curved, 2)
-        direction_pair = np.stack([principal_dir, flat_dir], axis=2)                 # (n_one_curved, 3, 2)
+        dminf[mask_one_curved] = principal_dir
+        dmaxf[mask_one_curved] = flat_dir
+        kminf[mask_one_curved] = principal_curv
+        # kmaxf stays 0
 
-        # Sort so kminf ≤ kmaxf (mirrors original: sort([principal_curv, 0])).
-        sort_order = np.argsort(curvature_pair, axis=1)                                        # (n_one_curved, 2)
-        sort_order_3d = np.broadcast_to(sort_order[:, np.newaxis, :], (n_one_curved, 3, 2))
-        sorted_dirs = np.take_along_axis(direction_pair, sort_order_3d, axis=2)
-        sorted_curvatures = np.take_along_axis(curvature_pair, sort_order, axis=1)
-
-        dminf[mask_one_curved] = sorted_dirs[:, :, 0]
-        dmaxf[mask_one_curved] = sorted_dirs[:, :, 1]
-        kminf[mask_one_curved] = sorted_curvatures[:, 0]
-        kmaxf[mask_one_curved] = sorted_curvatures[:, 1]
+    # Enforce kminf ≤ kmaxf globally with a single swap pass.
+    # Case 1 never needs it (shown above); case 2 never needs it (both curvatures are 0).
+    # Only case 3 faces where principal_curv > 0 will be swapped.
+    needs_swap = kminf > kmaxf
+    dminf[needs_swap], dmaxf[needs_swap] = dmaxf[needs_swap].copy(), dminf[needs_swap].copy()
+    kminf[needs_swap], kmaxf[needs_swap] = kmaxf[needs_swap].copy(), kminf[needs_swap].copy()
 
     return CurvatureResult(dminf, dmaxf, kminf, kmaxf)
 
@@ -234,8 +233,8 @@ def edge_basis(mesh: tm.Trimesh, e0: np.ndarray | None = None) -> scipy.sparse.c
     if e0 is None:
         e0 = mesh.vertices[mesh.faces[:, 2]] - mesh.vertices[mesh.faces[:, 1]]
 
-    basis_dir1 = e0 / np.linalg.norm(e0, axis=1, keepdims=True)       # first basis direction
-    basis_dir2 = np.cross(mesh.face_normals, basis_dir1, axis=1)       # second direction, orthogonal to both
+    basis_dir1 = e0 / np.linalg.norm(e0, axis=1, keepdims=True)  # first basis direction
+    basis_dir2 = np.cross(mesh.face_normals, basis_dir1, axis=1)  # second direction, orthogonal to both
 
     nf = len(mesh.faces)
 
@@ -276,7 +275,6 @@ def shapeop(mesh: tm.Trimesh) -> scipy.sparse.csr_matrix:
     edge_basis_mat = edge_basis(mesh, e0)
 
     # Project the 3-D principal directions into the 2-D per-face tangent basis.
-    # Fortran-order flattening matches the column-major layout assumed by edge_basis.
     dmin_in_basis = (edge_basis_mat @ curvature.dminf.flatten(order='F')).reshape(-1, 2, order='F')  # (nf, 2)
     dmax_in_basis = (edge_basis_mat @ curvature.dmaxf.flatten(order='F')).reshape(-1, 2, order='F')  # (nf, 2)
 
