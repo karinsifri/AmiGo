@@ -3,7 +3,8 @@ import numpy as np
 import trimesh as tm
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
-from src.consts import HEAT_COEFFICIENT, EPSILON
+from src.consts import HEAT_COEFFICIENT, EPSILON, ALPHA
+from src.shapeop import edge_basis, shapeop, shape_operator_ftf
 from src.utils import least_squares_with_equality
 
 
@@ -161,7 +162,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
 
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
-    column_order = least_squares_with_equality(A, np.ones(len(mesh.faces)), B)
+    column_order = least_squares_with_equality(A, get_column_order_goal(mesh, rotated_gradient), B)
 
     return column_order
 
@@ -206,3 +207,21 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
         condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
 
     return condition_matrix
+
+
+def get_column_order_goal(mesh: tm.Trimesh, isoline_direction: np.array) -> np.ndarray:
+    _, _, kminf, kmaxf = shape_operator_ftf(mesh)
+
+    mean_curv = (kminf + kmaxf) / 2
+    gaussian_curv = kminf * kmaxf
+
+    faces_to_adjust = (mean_curv < 0) & (gaussian_curv < 0)
+
+    isoline_basis = (edge_basis(mesh) @ isoline_direction.flatten(order='F')).reshape(-1, 2, order='F')
+    isoline_curvature = (
+            isoline_basis * (shapeop(mesh) @ isoline_basis.flatten(order='F')).reshape(-1, 2, order='F')
+    ).sum(axis=-1)
+
+    adjusted_goal = np.tanh(-isoline_curvature / ALPHA) / 2 + 1
+
+    return np.where(faces_to_adjust, adjusted_goal, 1)
