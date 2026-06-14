@@ -97,14 +97,14 @@ def test_smooth_craters_crater_faces_decrease_after_smoothing(sphere_with_dimple
     _, _, kminf_before, kmaxf_before = shape_operator_ftf(sphere_with_dimple)
     H_before = 0.5 * (kminf_before + kmaxf_before)
     K_before = kminf_before * kmaxf_before
-    craters_before = int(np.sum((K_before >= 0) & (H_before <= 0)))
+    craters_before = int(np.sum((K_before >= -EPSILON) & (H_before <= EPSILON)))
 
     result = smooth_craters(sphere_with_dimple)
 
     _, _, kminf_after, kmaxf_after = shape_operator_ftf(result)
     H_after = 0.5 * (kminf_after + kmaxf_after)
     K_after = kminf_after * kmaxf_after
-    craters_after = int(np.sum((K_after >= 0) & (H_after <= 0)))
+    craters_after = int(np.sum((K_after >= -EPSILON) & (H_after <= EPSILON)))
 
     assert craters_after < craters_before
 
