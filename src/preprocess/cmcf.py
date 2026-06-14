@@ -4,6 +4,7 @@ import scipy.sparse as sp
 import trimesh as tm
 from potpourri3d import compute_distance_multisource
 
+from src.consts import EPSILON
 from src.shapeop import shape_operator_ftf
 
 
@@ -33,7 +34,7 @@ def smooth_craters(mesh: tm.Trimesh) -> tm.Trimesh:
         mean_curvature_per_face = 0.5 * (min_curvature_per_face + max_curvature_per_face)
         gaussian_curvature_per_face = min_curvature_per_face * max_curvature_per_face
 
-        crater_face_mask = (gaussian_curvature_per_face >= 0) & (mean_curvature_per_face <= 0)
+        crater_face_mask = (gaussian_curvature_per_face >= -EPSILON) & (mean_curvature_per_face <= EPSILON)
         crater_vertex_indices = np.unique(mesh.faces[np.nonzero(crater_face_mask)])
 
         if len(crater_vertex_indices) == 0:
@@ -41,7 +42,7 @@ def smooth_craters(mesh: tm.Trimesh) -> tm.Trimesh:
 
         dist_to_crater = compute_distance_multisource(mesh.vertices, mesh.faces, crater_vertex_indices)
 
-        gaussian_bandwidth = 3 * mesh.edges_unique_length.mean()
+        gaussian_bandwidth = max(3 * mesh.edges_unique_length.mean(), EPSILON)
         crater_influence = np.exp(-dist_to_crater / gaussian_bandwidth)
 
         full_mass_matrix = gpy.massmatrix(mesh.vertices, mesh.faces, 'full')
@@ -52,6 +53,6 @@ def smooth_craters(mesh: tm.Trimesh) -> tm.Trimesh:
         rhs = mass_matrix @ mesh.vertices
         new_vertices = sp.linalg.spsolve(lhs, rhs)
 
-        mesh = tm.Trimesh(new_vertices, mesh.faces)
+        mesh = tm.Trimesh(new_vertices, mesh.faces, process=False)
 
     return mesh

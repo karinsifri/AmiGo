@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import trimesh as tm
 
+from src.consts import EPSILON
 from src.preprocess.cmcf import smooth_craters
 from src.shapeop import shape_operator_ftf
 
@@ -53,7 +54,7 @@ def test_convex_sphere_has_no_craters(convex_sphere):
     _, _, kminf, kmaxf = shape_operator_ftf(convex_sphere)
     H = 0.5 * (kminf + kmaxf)
     K = kminf * kmaxf
-    assert not np.any((K >= 0) & (H <= 0))
+    assert not np.any((K >= -EPSILON) & (H <= EPSILON))
 
 
 def test_smooth_craters_no_craters_vertices_unchanged(convex_sphere):
@@ -62,15 +63,15 @@ def test_smooth_craters_no_craters_vertices_unchanged(convex_sphere):
     assert np.array_equal(result.vertices, convex_sphere.vertices)
 
 
-def test_smooth_craters_inverted_sphere_is_entirely_craters(inverted_sphere):
+def test_inverted_sphere_is_entirely_craters(inverted_sphere):
     """Fixture guard: every face of the inverted sphere must have H < 0 and K > 0.
     An inverted sphere is a fully concave mesh — useful to verify crater detection,
     but not passed to smooth_craters (MCF collapses it to a point in 250 iterations)."""
     _, _, kminf, kmaxf = shape_operator_ftf(inverted_sphere)
     H = 0.5 * (kminf + kmaxf)
     K = kminf * kmaxf
-    assert np.all(H < 0)
-    assert np.all(K > 0)
+    assert np.all(H < -EPSILON)
+    assert np.all(K > EPSILON)
 
 
 def test_smooth_craters_dimple_vertices_change(sphere_with_dimple):
@@ -113,7 +114,7 @@ def test_dimple_has_crater_faces(sphere_with_dimple):
     _, _, kminf, kmaxf = shape_operator_ftf(sphere_with_dimple)
     H = 0.5 * (kminf + kmaxf)
     K = kminf * kmaxf
-    assert np.any((K >= 0) & (H <= 0))
+    assert np.any((K >= -EPSILON) & (H <= EPSILON))
 
 
 def test_smooth_craters_crater_region_moves_more_than_non_crater_region(sphere_with_dimple):
