@@ -3,7 +3,8 @@ import numpy as np
 import trimesh as tm
 from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
 
-from src.consts import HEAT_COEFFICIENT, EPSILON
+from src.consts import HEAT_COEFFICIENT, EPSILON, ALPHA
+from src.shapeop import edge_basis, shapeop, shape_operator_ftf
 from src.utils import least_squares_with_equality
 
 
@@ -148,6 +149,8 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     distance_gradient = grad_operator @ distance_field
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
 
+    isoline_direction = rotated_gradient / np.maximum(np.linalg.norm(rotated_gradient, axis=1, keepdims=True), EPSILON)
+
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
@@ -161,7 +164,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
 
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
-    column_order = least_squares_with_equality(A, np.ones(len(mesh.faces)), B)
+    column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
 
     return column_order
 
@@ -206,3 +209,44 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
         condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
 
     return condition_matrix
+
+
+def get_column_order_goal(mesh: tm.Trimesh, isoline_direction: np.ndarray) -> np.ndarray:
+    """Compute the per-face goal magnitude for the column-order gradient field (7.1.2).
+
+    In saddle regions where negative curvature would otherwise distort the column layout, the goal is replaced by a
+    curvature-aware weight that adjusts column spacing to compensate.
+
+    The adjustment applies only to faces where both the mean curvature H = (k₁+k₂)/2 and the Gaussian curvature
+    K = k₁·k₂ are negative. On those faces the goal is:
+
+        adjusted_goal = tanh(−κ_iso / α) / 2 + 1
+
+    where κ_iso is the normal curvature in the isoline direction and α = ALPHA controls the transition width.
+
+    Args:
+        mesh: the cut mesh on which the column-order function is being solved.
+        isoline_direction ((nf, 3), float): per-face 3-D vectors tangent to the isolines of the row-order field.
+
+    Returns:
+        ((nf,), float) per-face goal scalars; 1 on unaffected faces, adjusted in (0.5, 1.5) on saddle faces.
+    """
+    _, _, kminf, kmaxf = shape_operator_ftf(mesh)
+
+    mean_curv = (kminf + kmaxf) / 2
+    gaussian_curv = kminf * kmaxf
+
+    # Saddle faces (K < 0) where the negative principal curvature dominates (H < 0).
+    faces_to_adjust = (mean_curv < 0) & (gaussian_curv < 0)
+
+    # Project the isoline direction into each face's 2-D tangent basis: (nf, 2).
+    isoline_dir_2d = (edge_basis(mesh) @ isoline_direction.flatten(order='F')).reshape(-1, 2, order='F')
+
+    # Normal curvature in the isoline direction: κ_iso = d^T SO d, per face.
+    isoline_curvature = (isoline_dir_2d * (
+            shapeop(mesh) @ isoline_dir_2d.flatten(order='F')
+    ).reshape(-1, 2, order='F')).sum(axis=-1)
+
+    adjusted_goal = np.tanh(-isoline_curvature / ALPHA) / 2 + 1
+
+    return np.where(faces_to_adjust, adjusted_goal, 1)

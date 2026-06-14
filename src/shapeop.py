@@ -77,7 +77,8 @@ def shape_operator_ftf(mesh: tm.Trimesh) -> CurvatureResult:
 
     e0, e1, e2 = _edge_vectors(mesh)
 
-    inv_face_areas = (1.0 / mesh.area_faces)[:, None]  # (nf, 1)
+    safe_areas = np.maximum(mesh.area_faces, EPSILON)
+    inv_face_areas = (1.0 / safe_areas)[:, None]  # (nf, 1)
 
     # cross(face_normals, e) rotates e by 90° within the tangent plane,
     # scaling by 0.5/area gives the FTF gradient weight.
