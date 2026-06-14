@@ -149,6 +149,8 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     distance_gradient = grad_operator @ distance_field
     rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
 
+    isoline_direction = rotated_gradient / np.maximum(np.linalg.norm(rotated_gradient, axis=1, keepdims=True), EPSILON)
+
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
@@ -162,7 +164,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
 
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
-    column_order = least_squares_with_equality(A, get_column_order_goal(mesh, rotated_gradient), B)
+    column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
 
     return column_order
 
@@ -209,7 +211,7 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
     return condition_matrix
 
 
-def get_column_order_goal(mesh: tm.Trimesh, isoline_direction: np.array) -> np.ndarray:
+def get_column_order_goal(mesh: tm.Trimesh, isoline_direction: np.ndarray) -> np.ndarray:
     """Compute the per-face goal magnitude for the column-order gradient field (7.1.2).
 
     In saddle regions where negative curvature would otherwise distort the column layout, the goal is replaced by a
