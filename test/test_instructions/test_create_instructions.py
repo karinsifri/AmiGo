@@ -36,9 +36,38 @@ def test_dtw_to_stitches(dtw: np.ndarray, stitches: list[str]) -> None:
     (np.array([[0, 0], [1, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [5, 7], [6, 8], [7, 9], [7, 10], [8, 11],
                [8, 12]]),
      np.array([0, 0, 0, 0, 0, 0, -1, -1, 0]),
-     ['sc', 'inc', 'sc', 'sc', 'sc', 'inc', 'FLO sc', 'FLO inc', 'inc'])
+     ['sc', 'inc', 'sc', 'sc', 'sc', 'inc', 'FLO sc', 'FLO inc', 'inc']),
+    # BLO on the first stitch — crease of node 0 goes into the preamble before the first "3"
+    (np.array([[0, 0], [1, 1], [2, 2]]),
+     np.array([1, 0, 0]),
+     ['BLO sc', 'sc', 'sc']),
+    # BLO on the last stitch
+    (np.array([[0, 0], [1, 1], [2, 2]]),
+     np.array([0, 0, 1]),
+     ['sc', 'sc', 'BLO sc']),
+    # all zeros — identical result to passing no creases
+    (np.array([[0, 0], [1, 1], [2, 2]]),
+     np.array([0, 0, 0]),
+     ['sc', 'sc', 'sc']),
+    # BLO with inc — inc step keeps the earlier-row vertex fixed, so the BLO label repeats in the payload
+    (np.array([[0, 0], [1, 1], [1, 2], [2, 3]]),
+     np.array([0, 1, 0]),
+     ['sc', 'BLO inc', 'sc']),
+    # FLO with dec — dec steps advance the earlier row; both dec vertices are FLO
+    (np.array([[0, 0], [1, 1], [2, 1], [3, 2]]),
+     np.array([0, -1, -1, 0]),
+     ['sc', 'FLO dec', 'sc']),
+    # all FLO row
+    (np.array([[0, 0], [1, 1], [2, 2]]),
+     np.array([-1, -1, -1]),
+     ['FLO sc', 'FLO sc', 'FLO sc']),
 ])
 def test_dtw_to_stitches_with_creases(dtw, creases, stitches):
+    """Tests that BLO/FLO crease labels are correctly applied to each stitch type.
+
+    Covers: BLO/FLO on the first and last stitch, all-zeros creases (no prefix),
+    BLO with inc, FLO with dec, and an all-FLO row.
+    """
     assert dtw_to_stitches(dtw, creases) == stitches
 
 
@@ -71,6 +100,19 @@ def test_dtw_to_stitches_invalid_shape(dtw):
     """Tests that dtw_to_stitches raises ValueError for inputs with the wrong shape or type."""
     with pytest.raises(ValueError, match="dtw_path must be a 2D array with shape"):
         dtw_to_stitches(dtw)
+
+
+@pytest.mark.parametrize('creases', [
+    [0, 1, -1],                     # list, not ndarray
+    np.array([[0, 1], [-1, 0]]),     # 2D array
+    np.array([2, 0, 1]),             # value outside {-1, 0, 1}
+    np.array([-2, 0, 1]),            # value outside {-1, 0, 1}
+])
+def test_dtw_to_stitches_invalid_creases(creases):
+    """Tests that dtw_to_stitches raises ValueError when creases has wrong type, shape, or values."""
+    dtw = np.array([[0, 0], [1, 1], [2, 2]])
+    with pytest.raises(ValueError, match="creases must be a vector"):
+        dtw_to_stitches(dtw, creases)
 
 
 @pytest.mark.parametrize('rows, expected_res', [
