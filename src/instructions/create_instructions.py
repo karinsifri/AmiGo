@@ -33,6 +33,9 @@ def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) 
     if creases is not None and (not isinstance(creases, np.ndarray) or creases.ndim != 1 or set(creases) - {-1, 0, 1}):
         raise ValueError("creases must be a vector containing the values -1, 0 and 1")
 
+    if creases is not None and len(creases) != dtw_path[:, 0].max() + 1:
+        raise ValueError("creases array must include a crease type for each previous row's node")
+
     step_diffs = np.diff(dtw_path, axis=0)
 
     if set(step_diffs.ravel().tolist()) - {0, 1}:  # each component must be 0 or 1
