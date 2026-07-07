@@ -6,7 +6,7 @@ import trimesh as tm
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 
-from src.consts import EPSILON
+from src.consts import CREASE_ALIGNMENT_THRESHOLD, CREASE_CURVATURE_THRESHOLD, EPSILON
 from src.shapeop import shape_operator_ftf
 
 
@@ -20,14 +20,16 @@ class CrochetGraph(NamedTuple):
         column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
             encoding increases and decreases where row lengths differ
         connectivity (list of (k, 2) int): per-row-pair DTW paths using local row indices
-        creases (list of (k, ), int): 1 for blo, -1 for flo and 0 for regular stitch (TODO: fix documentation)
+        creases ((n,), int8): crease label per stitch vertex — 1 for BLO, -1 for FLO, 0 for regular
+        split_creases (list of (k,) int8): creases split by row; entry i holds labels for row i;
+            the last row is omitted because its vertices are never stitch roots
     """
     vertices: np.ndarray
     row_edges: np.ndarray
     column_edges: np.ndarray
     connectivity: list
     creases: np.ndarray
-    split_creases: list[np.array()]
+    split_creases: list[np.ndarray]
 
 
 def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
@@ -39,7 +41,8 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
         row_order ((v,), float): geodesic-distance field (u-axis) on the cut mesh vertices
         column_order ((v,), float): tangent scalar field (v-axis) on the cut mesh vertices
         stitch_size (float): uniform sampling spacing in UV space; controls stitch density
-        use_creases: todo: add
+        use_creases (bool): if True, classify stitch vertices as BLO/FLO/regular using principal curvatures;
+            if False, all creases are set to 0
 
     Returns:
         A ``CrochetGraph`` with:
@@ -49,6 +52,8 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
             - column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
               encoding increases and decreases where row lengths differ
             - connectivity (list of (k, 2) int): per-row-pair DTW paths using local row indices
+            - creases ((n,), int8): crease label per stitch vertex — 1 for BLO, -1 for FLO, 0 for regular
+            - split_creases (list of (k,) int8): creases split by row, one entry per row except the last
     """
     row_separated_vertices = calculate_crochet_graph_vertices(mesh, row_order, column_order, stitch_size)
 
@@ -134,16 +139,24 @@ def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, co
 
 def get_crease_vertices(mesh: tm.Trimesh, crochet_graph_vertices: np.ndarray, row_order: np.ndarray,
                         row_graph_edges: np.ndarray) -> np.ndarray:
-    """ TODO: add documentation
+    """Classify each stitch vertex as BLO, FLO, or regular based on principal curvature.
+
+    A vertex is BLO (back loop only) when the mesh curves sharply in the column direction with
+    positive (convex) curvature: the max-curvature direction is orthogonal to the isoline and
+    ``kmaxf > CREASE_CURVATURE_THRESHOLD``.  FLO (front loop only) is the analogous condition
+    for the min-curvature direction with negative (concave) curvature.  A crease is only
+    assigned when two consecutive row-neighbours both qualify, to suppress isolated detections.
 
     Args:
-        mesh:
-        crochet_graph_vertices:
-        row_order:
-        row_graph_edges:
+        mesh: the cut mesh returned by ``compute_row_column_order``
+        crochet_graph_vertices ((n, 3), float): stitch vertex positions in 3D
+        row_order ((v,), float): geodesic-distance field (u-axis) on the cut mesh vertices;
+            its gradient defines the across-row direction, whose tangent-plane rotation gives
+            the isoline direction
+        row_graph_edges ((m, 2), int): index pairs of adjacent stitches within each row
 
     Returns:
-
+        ((n,), int8): crease label per stitch vertex — 1 for BLO, -1 for FLO, 0 for regular
     """
     _, _, appropriate_faces = tm.proximity.closest_point(mesh, crochet_graph_vertices)
 
@@ -153,14 +166,13 @@ def get_crease_vertices(mesh: tm.Trimesh, crochet_graph_vertices: np.ndarray, ro
     rotated = np.cross(mesh.face_normals, gradients, axis=1)
     isoline_direction = rotated / np.maximum(np.linalg.norm(rotated, axis=1, keepdims=True), EPSILON)
 
-    # todo: move these magic numbers to the consts file
-    flo = (np.abs(np.linalg.vecdot(dminf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) < 0.5) & (
-            kminf[appropriate_faces] < -20)
-    blo = (np.abs(np.linalg.vecdot(dmaxf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) < 0.5) & (
-            kmaxf[appropriate_faces] > 20)
+    flo = (np.abs(np.linalg.vecdot(dminf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) <
+           CREASE_ALIGNMENT_THRESHOLD) & (kminf[appropriate_faces] < -CREASE_CURVATURE_THRESHOLD)
+    blo = (np.abs(np.linalg.vecdot(dmaxf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) <
+           CREASE_ALIGNMENT_THRESHOLD) & (kmaxf[appropriate_faces] > CREASE_CURVATURE_THRESHOLD)
 
     # check for two consecutive vertices in a row
-    creases = np.zeros(len(graph_vertices), dtype=np.int8)
+    creases = np.zeros(len(crochet_graph_vertices), dtype=np.int8)
     creases[np.unique(row_graph_edges[np.all(blo[row_graph_edges], axis=1)])] = 1
     creases[np.unique(row_graph_edges[np.all(flo[row_graph_edges], axis=1)])] = -1
 
