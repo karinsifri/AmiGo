@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 import numpy as np
 import trimesh as tm
 from fastdtw import fastdtw
@@ -6,8 +8,25 @@ from scipy.spatial.distance import euclidean
 from src.consts import EPSILON
 
 
+class CrochetGraph(NamedTuple):
+    """Crochet graph built from a parameterized mesh.
+
+    Attributes:
+        vertices ((n, 3), float): all sampled stitch locations in 3D, concatenated across rows
+        row_edges ((m, 2), int): index pairs of adjacent stitches within each row;
+            the last pair in each row wraps around to close the loop
+        column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
+            encoding increases and decreases where row lengths differ
+        connectivity (list of (k, 2) int): per-row-pair DTW paths using local row indices
+    """
+    vertices: np.ndarray
+    row_edges: np.ndarray
+    column_edges: np.ndarray
+    connectivity: list
+
+
 def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
-                      stitch_size: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
+                      stitch_size: float) -> CrochetGraph:
     """Build the full crochet graph: stitch vertices, row edges, and column edges.
 
     Args:
@@ -17,12 +36,13 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
         stitch_size (float): uniform sampling spacing in UV space; controls stitch density
 
     Returns:
-        A 3-tuple ``(vertices, row_edges, column_edges)``:
+        A ``CrochetGraph`` with:
             - vertices ((n, 3), float): all sampled stitch locations in 3D, concatenated across rows
             - row_edges ((m, 2), int): index pairs of adjacent stitches within each row;
               the last pair in each row wraps around to close the loop
             - column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
               encoding increases and decreases where row lengths differ
+            - connectivity (list of (k, 2) int): per-row-pair DTW paths using local row indices
     """
     row_separated_vertices = calculate_crochet_graph_vertices(mesh, row_order, column_order, stitch_size)
 
@@ -47,7 +67,7 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
         connectivity.append(np.array(path))
     column_edges = np.concatenate(column_edge_list, axis=0)
 
-    return vertices, row_edges, column_edges, connectivity
+    return CrochetGraph(vertices, row_edges, column_edges, connectivity)
 
 
 def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
