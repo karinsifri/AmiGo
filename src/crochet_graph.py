@@ -63,7 +63,7 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
     row_offsets = np.concatenate([[0], np.cumsum(row_lengths[:-1])])
 
     row_edge_list = []
-    for offset, row_len in zip(row_offsets, row_lengths):
+    for offset, row_len in zip(row_offsets, row_lengths, strict=True):
         local = np.arange(row_len)
         row_edge_list.append(np.stack([local + offset, np.roll(local, -1) + offset], axis=1))
     row_edges = np.concatenate(row_edge_list, axis=0)
@@ -75,8 +75,9 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
     column_edge_list = []
     connectivity = []
     split_creases = []
-    for (r1, o1), (r2, o2) in zip(zip(row_separated_vertices[:-1], row_offsets[:-1]),
-                                  zip(row_separated_vertices[1:], row_offsets[1:])):
+    for (r1, o1), (r2, o2) in zip(zip(row_separated_vertices[:-1], row_offsets[:-1], strict=True),
+                                  zip(row_separated_vertices[1:], row_offsets[1:], strict=True),
+                                  strict=True):
         _, path = fastdtw(r1, r2, dist=euclidean)
         path = np.array(path)
         column_edge_list.append(np.stack([path[:, 0] + o1, path[:, 1] + o2], axis=1))

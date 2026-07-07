@@ -121,7 +121,7 @@ def test_dtw_to_stitches_invalid_creases(creases):
 ])
 def test_dtw_to_stitches_creases_wrong_length(creases):
     """Tests that dtw_to_stitches raises ValueError when creases length doesn't match the earlier row."""
-    dtw = np.array([[0, 0], [1, 1], [2, 2]])  # earlier row has 3 vertices (indices 0–2)
+    dtw = np.array([[0, 0], [1, 1], [2, 2]])  # earlier row has 3 vertices (indices 0-2)
     with pytest.raises(ValueError, match="creases array must include a crease type"):
         dtw_to_stitches(dtw, creases)
 

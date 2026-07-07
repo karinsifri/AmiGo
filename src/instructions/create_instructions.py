@@ -7,7 +7,7 @@ import numpy as np
 def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) -> list[str]:
     """Convert a DTW alignment path between two crochet rows into a list of stitch instructions.
 
-    Each step in the path is encoded as a digit (d_prev × 2 + d_next):
+    Each step in the path is encoded as a digit (d_prev * 2 + d_next):
         - [0, 1] → 1: only the later row advances  — part of an 'inc' stitch
         - [1, 0] → 2: only the earlier row advances — part of a 'dec' stitch
         - [1, 1] → 3: both rows advance             — starts a new stitch
