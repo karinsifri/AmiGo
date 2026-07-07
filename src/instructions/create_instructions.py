@@ -5,30 +5,32 @@ import numpy as np
 
 
 def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) -> list[str]:
-    """ This function converts dtw path to crochet stitches. The conversion is based on the advancement of the path
-    along both rows of the crochet graph:
-        - If the previous row does not advance to the next node (diff [0, 1], binary 1) this edge will be part of an
-            'inc' stitch (one old node fans into multiple new nodes)
-        - If the next row does not advance to the next node (diff [1, 0], binary 2) this edge will be part of a 'dec'
-            stitch (multiple old nodes collapse into one new node)
-        - All stitches start with an advancement of both rows to the next node (diff [1, 1], binary 3). If there are no
-            'inc' or 'dec' stitches after - this edge will represent a 'sc' stitch
+    """Convert a DTW alignment path between two crochet rows into a list of stitch instructions.
 
-    We will represent those edges as a string (where each diff is encoded as a digit: d_prev × 2 + d_next)
-    and split the resulting string to individual stitches.
+    Each step in the path is encoded as a digit (d_prev × 2 + d_next):
+        - [0, 1] → 1: only the later row advances  — part of an 'inc' stitch
+        - [1, 0] → 2: only the earlier row advances — part of a 'dec' stitch
+        - [1, 1] → 3: both rows advance             — starts a new stitch
+
+    Stitches are separated by '3' in the encoded string; the first stitch has no leading '3'.
+    Each stitch's crease label ('b' for BLO, 'f' for FLO) is appended after the step that arrives at that node.
+    The first node's crease has no incoming step, so it is prepended before the first '3'.
 
     Args:
-        dtw_path: a dtw path along two consecutive rows of the crochet graph, where column 0 indexes
-            the earlier row and column 1 indexes the later row
-        creases: todo: add
+        dtw_path ((n, 2) int): DTW alignment path between two consecutive crochet rows;
+            column 0 indexes the earlier row, column 1 indexes the later row
+        creases ((k,) int8, optional): crease label per vertex in the earlier row —
+            1 for BLO, -1 for FLO, 0 for regular; when provided, stitches are prefixed
+            with 'BLO' or 'FLO' accordingly
 
     Returns:
-        a list of the stitches matching to the edges between the given crochet graph rows
+        list[str]: one stitch instruction per node in the earlier row, e.g. 'sc', 'inc',
+            'dec2', 'BLO sc', 'FLO inc'
     """
     if not isinstance(dtw_path, np.ndarray) or dtw_path.ndim != 2 or dtw_path.shape[1] != 2:
         raise ValueError("dtw_path must be a 2D array with shape (n, 2)")
 
-    if creases is not None and (not isinstance(creases, np.ndarray) or creases.ndim != 1 or set(creases) > {-1, 0, 1}):
+    if creases is not None and (not isinstance(creases, np.ndarray) or creases.ndim != 1 or set(creases) - {-1, 0, 1}):
         raise ValueError("creases must be a vector containing the values -1, 0 and 1")
 
     step_diffs = np.diff(dtw_path, axis=0)
@@ -36,17 +38,21 @@ def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) 
     if set(step_diffs.ravel().tolist()) - {0, 1}:  # each component must be 0 or 1
         raise ValueError("Invalid Stitch")
 
+    # one crease marker per DTW node, keyed by the earlier-row vertex index at that node
     edge_type_str = np.full(len(dtw_path), "", dtype=np.str_)
     if creases is not None:
         edge_types = creases[dtw_path[:, 0]]
-        edge_type_str[edge_types == 1] = 'b'    # BLO
-        edge_type_str[edge_types == -1] = 'f'   # FLO
+        edge_type_str[edge_types == 1] = 'b'
+        edge_type_str[edge_types == -1] = 'f'
 
-    # encode each diff as a digit: [0,1]=1 (inc), [1,0]=2 (dec), [1,1]=3 (stitch start)
+    # build the encoded string: the crease of node i is placed after the step that arrives at i,
+    # so after splitting on "3" it lands at the start of node i's stitch payload.
+    # node 0 has no incoming step, so its crease is prepended before the first "3".
     encoded_steps = edge_type_str[0] + "".join((step_diffs[:, 0] * 2 + step_diffs[:, 1]).astype(str)
                                                + edge_type_str[1:])
 
-    # each stitch starts with a [1,1] step (encoded as "3"); split on it to get each stitch's payload
+    # "3" separates consecutive stitches; the first stitch has no leading "3",
+    # so split("3") yields exactly one payload per stitch
     stitch_payloads = encoded_steps.split("3")
 
     stitches = []
