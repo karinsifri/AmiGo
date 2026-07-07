@@ -6,34 +6,8 @@ from scipy.spatial.distance import euclidean
 from src.consts import EPSILON
 
 
-def get_row_connectivity(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
-                         stitch_size: float) -> list[np.ndarray]:
-    """Compute the DTW alignment index paths between consecutive rows of the crochet graph.
-
-    Unlike ``get_crochet_graph``, this returns raw index correspondences rather than 3D edge
-    arrays — useful to generate instructions from the column edges.
-
-    Args:
-        mesh: the cut mesh returned by ``compute_row_column_order``
-        row_order ((v,), float): geodesic-distance field (u-axis) on the cut mesh vertices
-        column_order ((v,), float): tangent scalar field (v-axis) on the cut mesh vertices
-        stitch_size (float): uniform sampling spacing in UV space; controls stitch density
-
-    Returns:
-        A list of length ``n_rows - 1``.  Each entry is an ``(m, 2)`` int array whose rows are
-        ``(i, j)`` index pairs produced by FastDTW, meaning vertex ``i`` in row ``k`` is aligned
-        to vertex ``j`` in row ``k+1``.
-    """
-    row_separated_v = calculate_crochet_graph_vertices(mesh, row_order, column_order, stitch_size)
-
-    connectivity = [np.array(fastdtw(r1, r2, dist=euclidean)[1]) for r1, r2 in
-                    zip(row_separated_v[:-1], row_separated_v[1:])]
-
-    return connectivity
-
-
 def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
-                      stitch_size: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                      stitch_size: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]]:
     """Build the full crochet graph: stitch vertices, row edges, and column edges.
 
     Args:
@@ -45,41 +19,35 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
     Returns:
         A 3-tuple ``(vertices, row_edges, column_edges)``:
             - vertices ((n, 3), float): all sampled stitch locations in 3D, concatenated across rows
-            - row_edges ((m, 2, 3), float): pairs of adjacent stitch positions within each row;
+            - row_edges ((m, 2), int): index pairs of adjacent stitches within each row;
               the last pair in each row wraps around to close the loop
-            - column_edges ((p, 2, 3), float): DTW-aligned stitch pairs between consecutive rows,
+            - column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
               encoding increases and decreases where row lengths differ
     """
     row_separated_vertices = calculate_crochet_graph_vertices(mesh, row_order, column_order, stitch_size)
 
     vertices = np.concatenate(row_separated_vertices)
 
-    row_edges = np.concatenate([np.stack([row, np.roll(row, -1, axis=0)], axis=1) for row in row_separated_vertices],
-                               axis=0)
+    row_lengths = [len(r) for r in row_separated_vertices]
+    row_offsets = np.concatenate([[0], np.cumsum(row_lengths[:-1])])
 
-    column_edges = np.concatenate([get_column_edges(r1, r2) for r1, r2 in
-                                   zip(row_separated_vertices[:-1], row_separated_vertices[1:])], axis=0)
+    row_edge_list = []
+    for offset, row_len in zip(row_offsets, row_lengths):
+        local = np.arange(row_len)
+        row_edge_list.append(np.stack([local + offset, np.roll(local, -1) + offset], axis=1))
+    row_edges = np.concatenate(row_edge_list, axis=0)
 
-    return vertices, row_edges, column_edges
+    column_edge_list = []
+    connectivity = []
+    for (r1, o1), (r2, o2) in zip(zip(row_separated_vertices[:-1], row_offsets[:-1]),
+                                  zip(row_separated_vertices[1:], row_offsets[1:])):
+        _, path = fastdtw(r1, r2, dist=euclidean)
+        path = np.array(path)
+        column_edge_list.append(np.stack([path[:, 0] + o1, path[:, 1] + o2], axis=1))
+        connectivity.append(np.array(path))
+    column_edges = np.concatenate(column_edge_list, axis=0)
 
-
-def get_column_edges(row1: np.ndarray, row2: np.ndarray) -> np.ndarray:
-    """Compute column edges between two adjacent rows using FastDTW alignment.
-
-    DTW handles rows of unequal length, so one stitch in ``row1`` can match multiple nodes in
-    ``row2`` (increase) or vice-versa (decrease).
-
-    Args:
-        row1 ((n, 3), float): 3D stitch positions in the earlier row
-        row2 ((m, 3), float): 3D stitch positions in the later row
-
-    Returns:
-        ((p, 2, 3), float): edge array where each entry ``[i]`` is a pair
-        ``[row1[a], row2[b]]`` for the DTW-matched indices ``(a, b)``
-    """
-    _, path = fastdtw(row1, row2, dist=euclidean)
-    path = np.array(path)
-    return np.stack([row1[path[:, 0]], row2[path[:, 1]]], axis=1)
+    return vertices, row_edges, column_edges, connectivity
 
 
 def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
