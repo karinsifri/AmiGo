@@ -1,11 +1,13 @@
 from typing import NamedTuple
 
+import gpytoolbox as gpy
 import numpy as np
 import trimesh as tm
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 
 from src.consts import EPSILON
+from src.shapeop import shape_operator_ftf
 
 
 class CrochetGraph(NamedTuple):
@@ -18,15 +20,18 @@ class CrochetGraph(NamedTuple):
         column_edges ((p, 2), int): DTW-aligned index pairs between consecutive rows,
             encoding increases and decreases where row lengths differ
         connectivity (list of (k, 2) int): per-row-pair DTW paths using local row indices
+        creases (list of (k, ), int): 1 for blo, -1 for flo and 0 for regular stitch (TODO: fix documentation)
     """
     vertices: np.ndarray
     row_edges: np.ndarray
     column_edges: np.ndarray
     connectivity: list
+    creases: np.ndarray
+    split_creases: list[np.array()]
 
 
 def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
-                      stitch_size: float) -> CrochetGraph:
+                      stitch_size: float, use_creases: bool) -> CrochetGraph:
     """Build the full crochet graph: stitch vertices, row edges, and column edges.
 
     Args:
@@ -34,6 +39,7 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
         row_order ((v,), float): geodesic-distance field (u-axis) on the cut mesh vertices
         column_order ((v,), float): tangent scalar field (v-axis) on the cut mesh vertices
         stitch_size (float): uniform sampling spacing in UV space; controls stitch density
+        use_creases: todo: add
 
     Returns:
         A ``CrochetGraph`` with:
@@ -57,17 +63,23 @@ def get_crochet_graph(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.
         row_edge_list.append(np.stack([local + offset, np.roll(local, -1) + offset], axis=1))
     row_edges = np.concatenate(row_edge_list, axis=0)
 
+    creases = np.zeros(len(vertices), dtype=np.int8)
+    if use_creases:
+        creases = get_crease_vertices(mesh, vertices, row_order, row_edges)
+
     column_edge_list = []
     connectivity = []
+    split_creases = []
     for (r1, o1), (r2, o2) in zip(zip(row_separated_vertices[:-1], row_offsets[:-1]),
                                   zip(row_separated_vertices[1:], row_offsets[1:])):
         _, path = fastdtw(r1, r2, dist=euclidean)
         path = np.array(path)
         column_edge_list.append(np.stack([path[:, 0] + o1, path[:, 1] + o2], axis=1))
         connectivity.append(np.array(path))
+        split_creases.append(creases[o1:o2].copy())
     column_edges = np.concatenate(column_edge_list, axis=0)
 
-    return CrochetGraph(vertices, row_edges, column_edges, connectivity)
+    return CrochetGraph(vertices, row_edges, column_edges, connectivity, creases, split_creases)
 
 
 def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray,
@@ -118,3 +130,38 @@ def calculate_crochet_graph_vertices(mesh: tm.Trimesh, row_order: np.ndarray, co
     row_separated = [sampled_3d[row_idx == i] for i in np.arange(row_idx.max() + 1)]
 
     return row_separated
+
+
+def get_crease_vertices(mesh: tm.Trimesh, crochet_graph_vertices: np.ndarray, row_order: np.ndarray,
+                        row_graph_edges: np.ndarray) -> np.ndarray:
+    """ TODO: add documentation
+
+    Args:
+        mesh:
+        crochet_graph_vertices:
+        row_order:
+        row_graph_edges:
+
+    Returns:
+
+    """
+    _, _, appropriate_faces = tm.proximity.closest_point(mesh, crochet_graph_vertices)
+
+    dminf, dmaxf, kminf, kmaxf = shape_operator_ftf(mesh)
+
+    gradients = np.reshape(gpy.grad(mesh.vertices, mesh.faces) @ row_order, (-1, 3), order='F')
+    rotated = np.cross(mesh.face_normals, gradients, axis=1)
+    isoline_direction = rotated / np.maximum(np.linalg.norm(rotated, axis=1, keepdims=True), EPSILON)
+
+    # todo: move these magic numbers to the consts file
+    flo = (np.abs(np.linalg.vecdot(dminf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) < 0.5) & (
+            kminf[appropriate_faces] < -20)
+    blo = (np.abs(np.linalg.vecdot(dmaxf[appropriate_faces], isoline_direction[appropriate_faces], axis=1)) < 0.5) & (
+            kmaxf[appropriate_faces] > 20)
+
+    # check for two consecutive vertices in a row
+    creases = np.zeros(len(graph_vertices), dtype=np.int8)
+    creases[np.unique(row_graph_edges[np.all(blo[row_graph_edges], axis=1)])] = 1
+    creases[np.unique(row_graph_edges[np.all(flo[row_graph_edges], axis=1)])] = -1
+
+    return creases
