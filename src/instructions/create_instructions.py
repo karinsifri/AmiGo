@@ -1,9 +1,10 @@
 from itertools import groupby
+from typing import Optional
 
 import numpy as np
 
 
-def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
+def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) -> list[str]:
     """ This function converts dtw path to crochet stitches. The conversion is based on the advancement of the path
     along both rows of the crochet graph:
         - If the previous row does not advance to the next node (diff [0, 1], binary 1) this edge will be part of an
@@ -19,6 +20,7 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     Args:
         dtw_path: a dtw path along two consecutive rows of the crochet graph, where column 0 indexes
             the earlier row and column 1 indexes the later row
+        creases: todo: add
 
     Returns:
         a list of the stitches matching to the edges between the given crochet graph rows
@@ -26,29 +28,46 @@ def dtw_to_stitches(dtw_path: np.ndarray) -> list[str]:
     if not isinstance(dtw_path, np.ndarray) or dtw_path.ndim != 2 or dtw_path.shape[1] != 2:
         raise ValueError("dtw_path must be a 2D array with shape (n, 2)")
 
+    if creases is not None and (not isinstance(creases, np.ndarray) or creases.ndim != 1 or set(creases) > {-1, 0, 1}):
+        raise ValueError("creases must be a vector containing the values -1, 0 and 1")
+
     step_diffs = np.diff(dtw_path, axis=0)
 
     if set(step_diffs.ravel().tolist()) - {0, 1}:  # each component must be 0 or 1
         raise ValueError("Invalid Stitch")
 
+    edge_type_str = np.full(len(dtw_path), "", dtype=np.str_)
+    if creases is not None:
+        edge_types = creases[dtw_path[:, 0]]
+        edge_type_str[edge_types == 1] = 'b'    # BLO
+        edge_type_str[edge_types == -1] = 'f'   # FLO
+
     # encode each diff as a digit: [0,1]=1 (inc), [1,0]=2 (dec), [1,1]=3 (stitch start)
-    encoded_steps = "".join((step_diffs[:, 0] * 2 + step_diffs[:, 1]).astype(str))
+    encoded_steps = edge_type_str[0] + "".join((step_diffs[:, 0] * 2 + step_diffs[:, 1]).astype(str)
+                                               + edge_type_str[1:])
 
     # each stitch starts with a [1,1] step (encoded as "3"); split on it to get each stitch's payload
     stitch_payloads = encoded_steps.split("3")
 
     stitches = []
     for payload in stitch_payloads:
-        if set(payload) - {'1', '2'} or ('1' in payload and '2' in payload):  # mixed inc+dec is invalid
+        if set(payload) - {'1', '2', 'b', 'f'} or ('1' in payload and '2' in payload):  # mixed inc+dec is invalid
             raise ValueError("Invalid Stitch")
-        elif not payload:
-            stitches.append("sc")
         elif "1" in payload:
             extra_inc_count = payload.count('1')
-            stitches.append("inc" if extra_inc_count == 1 else f"inc{extra_inc_count}")
+            s = ("inc" if extra_inc_count == 1 else f"inc{extra_inc_count}")
         elif "2" in payload:
             extra_dec_count = payload.count('2')
-            stitches.append("dec" if extra_dec_count == 1 else f"dec{extra_dec_count}")
+            s = ("dec" if extra_dec_count == 1 else f"dec{extra_dec_count}")
+        else:
+            s = "sc"
+
+        if 'b' in payload:
+            s = "BLO " + s
+        if 'f' in payload:
+            s = "FLO " + s
+
+        stitches.append(s)
 
     return stitches
 
