@@ -22,6 +22,26 @@ def test_dtw_to_stitches(dtw: np.ndarray, stitches: list[str]) -> None:
     assert dtw_to_stitches(dtw) == stitches
 
 
+@pytest.mark.parametrize('dtw, creases, stitches', [
+    (np.array([[0, 0], [1, 1], [2, 2], [3, 3], [4, 3], [5, 4], [6, 5], [7, 6], [8, 7], [9, 8], [10, 9], [11, 10],
+               [12, 11], [13, 12], [14, 13], [15, 14], [16, 15], [17, 16], [18, 17], [19, 18], [20, 19], [21, 20],
+               [22, 21], [23, 22], [24, 23], [25, 24], [26, 25], [27, 26], [28, 27], [29, 28], [30, 29], [31, 30],
+               [32, 31], [33, 32], [34, 33], [35, 34], [36, 35], [37, 36], [38, 37]]),
+     np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1,
+               1, 1, 1, 0]),
+     ['BLO sc', 'BLO sc', 'BLO sc', 'BLO dec', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc',
+      'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'sc',
+      'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc',
+      'BLO sc', 'BLO sc', 'BLO sc', 'BLO sc', 'sc']),
+    (np.array([[0, 0], [1, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [5, 7], [6, 8], [7, 9], [7, 10], [8, 11],
+               [8, 12]]),
+     np.array([0, 0, 0, 0, 0, 0, -1, -1, 0]),
+     ['sc', 'inc', 'sc', 'sc', 'sc', 'inc', 'FLO sc', 'FLO inc', 'inc'])
+])
+def test_dtw_to_stitches_with_creases(dtw, creases, stitches):
+    assert dtw_to_stitches(dtw, creases) == stitches
+
+
 @pytest.mark.parametrize('dtw', [
     np.array([[0, 0], [1, 0], [1, 1]]),  # mixed stitch
     np.array([[0, 0], [2, 0]]),  # invalid path
@@ -42,10 +62,10 @@ def test_dtw_to_stitches_case_failed(dtw: np.ndarray) -> None:
 
 
 @pytest.mark.parametrize('dtw', [
-    np.array([0, 1, 2]),                       # 1D array
-    np.array([[0, 0, 0], [1, 1, 1]]),          # 3 columns
-    np.zeros((3, 1)),                          # 1 column
-    [[0, 0], [1, 1]],                          # list, not ndarray
+    np.array([0, 1, 2]),  # 1D array
+    np.array([[0, 0, 0], [1, 1, 1]]),  # 3 columns
+    np.zeros((3, 1)),  # 1 column
+    [[0, 0], [1, 1]],  # list, not ndarray
 ])
 def test_dtw_to_stitches_invalid_shape(dtw):
     """Tests that dtw_to_stitches raises ValueError for inputs with the wrong shape or type."""
