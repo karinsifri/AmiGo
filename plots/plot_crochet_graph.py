@@ -31,10 +31,6 @@ def plot_crochet_graph(graph: CrochetGraph) -> pv.Plotter:
         plotter.add_lines(graph.vertices[graph.column_edges[blo_col]].reshape((-1, 3)), color="green", width=6, label="BLO Column Edges", connected=False)
     if flo_col.any():
         plotter.add_lines(graph.vertices[graph.column_edges[flo_col]].reshape((-1, 3)), color="cyan", width=6, label="FLO Column Edges", connected=False)
-    if blo.any():
-        plotter.add_points(graph.vertices[blo], color="green", point_size=8, label="BLO Vertices")
-    if flo.any():
-        plotter.add_points(graph.vertices[flo], color="cyan", point_size=8, label="FLO Vertices")
     plotter.add_legend()
     return plotter
 
