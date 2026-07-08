@@ -19,7 +19,9 @@ def plot_stitch_rows(
     bounded above and below by red lines marking the row extent. An annotation
     label is placed to the right of each row. If ``split_creases`` is given, FLO
     stitches are overlaid in cyan and BLO stitches in green, matching the crease
-    colouring used by ``plot_crochet_graph``.
+    colouring used by ``plot_crochet_graph``. A small arrow under the start of
+    each row's bottom line marks its working direction, alternating left-to-right
+    and right-to-left starting with left-to-right on the first row.
 
     Suitable for both raw stitch sequences (e.g. ``"dc ch sc tr"``) and folded
     sequences with repetition counts (e.g. ``"3*dc 2*ch (42)"``).
@@ -55,13 +57,23 @@ def plot_stitch_rows(
                 ax.add_collection(LineCollection(stitch_segments[blo], colors='green', linewidths=2))
             if flo.any():
                 ax.add_collection(LineCollection(stitch_segments[flo], colors='cyan', linewidths=2))
-        ax.hlines(row_idx - 0.25, 0, row_connectivity[:, 0].max(), color='r')
+        row_extent = row_connectivity[:, 0].max()
+        ax.hlines(row_idx - 0.25, 0, row_extent, color='r')
         ax.hlines(row_idx + 0.25, 0, row_connectivity[:, 1].max(), color='r')
         ax.annotate(label, xy=[row_connectivity[-1, :].max() + 1, row_idx])
+
+        arrow_y = row_idx - 0.4
+        if row_idx % 2 == 0:
+            arrow_start, arrow_end = 0, 1
+        else:
+            arrow_start, arrow_end = 1, 0
+        ax.annotate('', xy=(arrow_end, arrow_y), xytext=(arrow_start, arrow_y),
+                    arrowprops=dict(arrowstyle='-|>', color='k', lw=1.5))
     ax.set_ylabel("row")
     for spine in ['right', 'top', 'bottom']:
         ax.spines[spine].set_visible(False)
     ax.set_xticks([])
+    ax.set_ylim(-0.5, len(row_stitch_connectivity) - 0.5)
     return fig, ax
 
 
