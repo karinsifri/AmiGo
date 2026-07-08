@@ -24,6 +24,8 @@ def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh,
                 mesh
             - column_order ((v,), float): a numpy array containing the column order functions value for each vertex in
                 the mesh
+            - geodesic_path ((n, 3), float): the points of the geodesic path from the origin to the distance-field
+                maximum, used to cut the mesh
     """
     distance_solver = MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces, t_coef=HEAT_COEFFICIENT)
     distance_field = distance_solver.compute_distance(origin)

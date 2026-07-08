@@ -2,7 +2,7 @@ import trimesh as tm
 import pyvista as pv
 
 
-def plot_mesh_picker(mesh: tm.Trimesh) -> list[int]:
+def plot_mesh_picker(mesh: tm.Trimesh) -> tuple[pv.Plotter, list[int]]:
     """Display an interactive 3D mesh and let the user pick seed vertices.
 
     Opens a PyVista window showing the mesh in skyblue. Each click on a vertex
