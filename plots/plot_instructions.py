@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -8,13 +10,16 @@ from matplotlib.figure import Figure
 def plot_stitch_rows(
     row_stitch_connectivity,
     annotations: list[str],
+    split_creases: Optional[list[np.ndarray]] = None,
     figsize: tuple[int, int] = (10, 15),
 ) -> tuple[Figure, Axes]:
     """Plot per-row stitch connectivity as a 2D diagram.
 
     Each row is drawn as a set of horizontal blue line segments (one per stitch),
     bounded above and below by red lines marking the row extent. An annotation
-    label is placed to the right of each row.
+    label is placed to the right of each row. If ``split_creases`` is given, FLO
+    stitches are overlaid in cyan and BLO stitches in green, matching the crease
+    colouring used by ``plot_crochet_graph``.
 
     Suitable for both raw stitch sequences (e.g. ``"dc ch sc tr"``) and folded
     sequences with repetition counts (e.g. ``"3*dc 2*ch (42)"``).
@@ -25,6 +30,11 @@ def plot_stitch_rows(
             one stitch, as returned by ``get_row_connectivity``.
         annotations: One label string per row, displayed to the right of the
             row. Length must match ``row_stitch_connectivity``.
+        split_creases: Optional per-row crease labels, one int8 array per row
+            giving the label for each vertex in that row (as in
+            ``CrochetGraph.split_creases``) — 1 for BLO, -1 for FLO, 0 for
+            regular. Indexed via ``row_stitch_connectivity[row][:, 0]``, so its
+            length may differ from the number of stitches in the row.
         figsize: Matplotlib figure size as (width, height) in inches.
 
     Returns:
@@ -37,6 +47,14 @@ def plot_stitch_rows(
             axis=-1,
         )
         ax.add_collection(LineCollection(stitch_segments, colors='b', linewidths=2))
+        if split_creases is not None:
+            segment_creases = split_creases[row_idx][row_connectivity[:, 0]]
+            blo = segment_creases == 1
+            flo = segment_creases == -1
+            if blo.any():
+                ax.add_collection(LineCollection(stitch_segments[blo], colors='green', linewidths=2))
+            if flo.any():
+                ax.add_collection(LineCollection(stitch_segments[flo], colors='cyan', linewidths=2))
         ax.hlines(row_idx - 0.25, 0, row_connectivity[:, 0].max(), color='r')
         ax.hlines(row_idx + 0.25, 0, row_connectivity[:, 1].max(), color='r')
         ax.annotate(label, xy=[row_connectivity[-1, :].max() + 1, row_idx])
