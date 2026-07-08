@@ -8,7 +8,7 @@ from src.shapeop import edge_basis, shapeop, shape_operator_ftf
 from src.utils import least_squares_with_equality
 
 
-def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray, np.ndarray]:
+def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray, np.ndarray, np.ndarray]:
     """ Given a triangle mesh and a seed point, compute the row column order function that can be sampled to compute a
     crochet graph.
 
@@ -40,7 +40,7 @@ def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh,
 
     column_order = get_column_order(cut_mesh, row_order, geodesic_path)
 
-    return cut_mesh, row_order, column_order
+    return cut_mesh, row_order, column_order, geodesic_path
 
 
 def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:

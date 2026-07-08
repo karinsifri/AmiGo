@@ -10,7 +10,6 @@ def plot_geodesic_distance_field(
     distance_field: np.ndarray,
     seed_vertex_id: int,
     geodesic_path: np.ndarray | None = None,
-    notebook: bool = True,
 ):
     """Plot a geodesic distance field on a 3D mesh.
 
@@ -25,10 +24,11 @@ def plot_geodesic_distance_field(
         seed_vertex_id: Index of the source vertex (shown as the red sphere).
         geodesic_path: Optional (N, 3) array of 3-D points along the geodesic
             path from seed to the farthest vertex. Shown in green when provided.
-        notebook: Pass True when running inside a Jupyter notebook so PyVista
-            uses its inline renderer; False opens a standalone window.
+
+    Returns:
+        Configured plotter. Call ``plotter.show()`` to open the window.
     """
-    plotter = pv.Plotter(notebook=notebook)
+    plotter = pv.Plotter()
     plotter.add_mesh(pv.wrap(mesh), scalars=distance_field, cmap="jet", label="Distance Field")
     plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[seed_vertex_id]), color="red", label="Origin Point")
     plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(distance_field)]), color="blue", label="Maxima")
@@ -36,7 +36,7 @@ def plot_geodesic_distance_field(
     if geodesic_path is not None:
         plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
     plotter.add_legend()
-    plotter.show()
+    return plotter
 
 
 def plot_column_order(
@@ -45,7 +45,6 @@ def plot_column_order(
     origin_point: np.ndarray,
     maxima_point: np.ndarray,
     geodesic_path: np.ndarray | None = None,
-    notebook: bool = True,
 ):
     """Plot the column-order scalar field on the cut mesh.
 
@@ -62,10 +61,11 @@ def plot_column_order(
             typically ``mesh.vertices[np.argmax(distance_field)]``.
         geodesic_path: Optional (N, 3) array of 3-D points along the geodesic
             path. Shown in green when provided.
-        notebook: Pass True when running inside a Jupyter notebook so PyVista
-            uses its inline renderer; False opens a standalone window.
+
+    Returns:
+        Configured plotter. Call ``plotter.show()`` to open the window.
     """
-    plotter = pv.Plotter(notebook=notebook)
+    plotter = pv.Plotter()
     plotter.add_mesh(pv.wrap(cut_mesh), scalars=column_order, cmap="jet", label="Distance Field")
     plotter.add_mesh(pv.Sphere(radius=0.007, center=origin_point), color="red", label="Origin Point")
     plotter.add_mesh(pv.Sphere(radius=0.007, center=maxima_point), color="blue", label="Maxima")
@@ -73,7 +73,7 @@ def plot_column_order(
     if geodesic_path is not None:
         plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
     plotter.add_legend()
-    plotter.show()
+    return plotter
 
 
 def plot_row_column_order(
@@ -81,7 +81,6 @@ def plot_row_column_order(
     row_order: np.ndarray,
     column_order: np.ndarray,
     geodesic_path: np.ndarray | None = None,
-    notebook: bool = False,
 ):
     """Plot row-order and column-order scalar fields side-by-side on a mesh.
 
@@ -96,25 +95,26 @@ def plot_row_column_order(
         column_order: Per-vertex column-order values (tangent field), shape (V,).
         geodesic_path: Optional (N, 3) array of 3-D points along the geodesic
             path. Shown in green in both windows when provided.
-        notebook: Pass True when running inside a Jupyter notebook so PyVista
-            uses its inline renderer; False opens a standalone window.
-    """
-    plotter = pv.Plotter(notebook=notebook)
-    plotter.add_mesh(pv.wrap(mesh), scalars=row_order, cmap="jet", label="Distance Field")
-    plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmin(row_order)]), color="red", label="Origin Point")
-    plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(row_order)]), color="blue", label="Maxima")
-    plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=row_order), color="black", line_width=2, label="Equality Lines")
-    if geodesic_path is not None:
-        plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
-    plotter.add_legend()
-    plotter.show(interactive_update=True, auto_close=False)
 
-    plotter2 = pv.Plotter(notebook=notebook)
-    plotter2.add_mesh(pv.wrap(mesh), scalars=column_order, cmap="jet", label="Distance Field")
-    plotter2.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmin(row_order)]), color="red", label="Origin Point")
-    plotter2.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(row_order)]), color="blue", label="Maxima")
-    plotter2.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=column_order), color="black", line_width=2, label="Equality Lines")
+    Returns:
+        Tuple of (row_plotter, column_plotter). Call ``plotter.show()`` on each
+        to open the windows.
+    """
+    row_plotter = pv.Plotter()
+    row_plotter.add_mesh(pv.wrap(mesh), scalars=row_order, cmap="jet", label="Distance Field")
+    row_plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmin(row_order)]), color="red", label="Origin Point")
+    row_plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(row_order)]), color="blue", label="Maxima")
+    row_plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=row_order), color="black", line_width=2, label="Equality Lines")
     if geodesic_path is not None:
-        plotter2.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
-    plotter2.add_legend()
-    plotter2.show(interactive_update=True, auto_close=False)
+        row_plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
+    row_plotter.add_legend()
+
+    column_plotter = pv.Plotter()
+    column_plotter.add_mesh(pv.wrap(mesh), scalars=column_order, cmap="jet", label="Distance Field")
+    column_plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmin(row_order)]), color="red", label="Origin Point")
+    column_plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(row_order)]), color="blue", label="Maxima")
+    column_plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=column_order), color="black", line_width=2, label="Equality Lines")
+    if geodesic_path is not None:
+        column_plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
+    column_plotter.add_legend()
+    return row_plotter, column_plotter
