@@ -1,0 +1,4 @@
+mesh_path:
+seed: -1
+stitch_size: 0.04
+use_creases: False

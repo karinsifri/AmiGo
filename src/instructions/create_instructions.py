@@ -3,6 +3,38 @@ from typing import Optional
 
 import numpy as np
 
+from src.instructions.loop_folding import Program
+
+
+def get_row_stitch_sequences(connectivity: list[np.ndarray], creases: list[np.ndarray]) -> list[list[str]]:
+    """Convert per-row DTW connectivity into per-row stitch instruction sequences.
+
+    Args:
+        connectivity: sequence of per-row-pair DTW paths
+        creases: sequence of per-row crease labels
+
+    Returns:
+        list[list[str]]: one stitch-instruction list per row; every other row is reversed (back-and-forth crochet)
+            to avoid shape deviation from the slant of the stitches.
+    """
+    return [dtw_to_stitches(dtw, bflo)[::(-1) ** i] for i, (dtw, bflo) in
+            enumerate(zip(connectivity, creases, strict=True))]
+
+
+def get_folded_rows(row_stitches: list[str], connectivity: list[np.ndarray]) -> list[str]:
+    """Fold each row's stitch sequence into a compact loop notation with a trailing stitch count.
+
+    Args:
+        row_stitches: one stitch-instruction list per row
+        connectivity: sequence of per-row-pair DTW paths
+
+    Returns:
+        list[str]: one folded instruction string per row, where the trailing number is the number of loops after that
+            row.
+    """
+    return [f"{Program.fold(stitch_seq)} ({row_conn[-1][1] + 1})" for stitch_seq, row_conn in
+            zip(row_stitches, connectivity, strict=True)]
+
 
 def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) -> list[str]:
     """Convert a DTW alignment path between two crochet rows into a list of stitch instructions.
