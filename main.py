@@ -9,6 +9,8 @@ from plots import (
     plot_stitch_rows,
     plot_final_instructions,
 )
+from preprocess.cmcf import smooth_craters
+from preprocess.scale import set_surface_area_to_one
 from src.config import PipelineConfig, parse_config
 from src.crochet_graph import get_crochet_graph
 from src.instructions.create_instructions import create_final_instructions, get_row_stitch_sequences, \
@@ -17,7 +19,11 @@ from src.order_functions import compute_row_column_order
 
 
 def run_pipeline(config: PipelineConfig) -> str:
+    """Run the pipeline end to end, displaying each intermediate plot, and return the final instructions."""
     mesh = tm.load_mesh(config.mesh_path)
+
+    mesh = set_surface_area_to_one(mesh)
+    mesh = smooth_craters(mesh)
 
     seed = config.seed
     if seed < 0:
@@ -52,6 +58,7 @@ def run_pipeline(config: PipelineConfig) -> str:
 
 
 def main() -> None:
+    """Parse the pipeline configuration and run it."""
     config = parse_config()
     run_pipeline(config)
 
