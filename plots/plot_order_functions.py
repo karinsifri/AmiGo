@@ -23,8 +23,6 @@ def plot_row_column_order(mesh: tm.Trimesh, row_order: np.ndarray, column_order:
                          label="Origin Point")
         plotter.add_mesh(pv.Sphere(radius=0.007, center=mesh.vertices[np.argmax(row_order)]), color="blue",
                          label="Maxima")
-        plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=row_order), color="black", line_width=2,
-                         label="Equality Lines")
         if geodesic_path is not None:
             plotter.add_lines(geodesic_path, color="green", width=7, label="Geodesic Path", connected=True)
         plotter.add_legend()
@@ -32,10 +30,14 @@ def plot_row_column_order(mesh: tm.Trimesh, row_order: np.ndarray, column_order:
 
     row_plotter = pv.Plotter()
     row_plotter.add_mesh(pv.wrap(mesh), scalars=row_order, cmap="jet", label="Row-Order function (f)")
+    row_plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=row_order), color="black", line_width=2,
+                         label="Equality Lines")
     row_plotter = add_common_attributes(row_plotter)
 
     column_plotter = pv.Plotter()
     column_plotter.add_mesh(pv.wrap(mesh), scalars=column_order, cmap="jet", label="column-Order function (g)")
+    column_plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=column_order), color="black", line_width=2,
+                            label="Equality Lines")
     column_plotter = add_common_attributes(column_plotter)
 
     return row_plotter, column_plotter
