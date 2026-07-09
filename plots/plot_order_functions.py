@@ -35,7 +35,7 @@ def plot_row_column_order(mesh: tm.Trimesh, row_order: np.ndarray, column_order:
     row_plotter = add_common_attributes(row_plotter)
 
     column_plotter = pv.Plotter()
-    column_plotter.add_mesh(pv.wrap(mesh), scalars=column_order, cmap="jet", label="column-Order function (g)")
+    column_plotter.add_mesh(pv.wrap(mesh), scalars=column_order, cmap="jet", label="Column-Order function (g)")
     column_plotter.add_mesh(pv.wrap(mesh).contour(isosurfaces=20, scalars=column_order), color="black", line_width=2,
                             label="Equality Lines")
     column_plotter = add_common_attributes(column_plotter)

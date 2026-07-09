@@ -59,6 +59,8 @@ def parse_config() -> PipelineConfig:
     mesh_path = Path(mesh_path)
     if not mesh_path.is_absolute():
         mesh_path = PROJECT_ROOT / mesh_path
+    if not mesh_path.is_file():
+        raise FileNotFoundError(f"Mesh file not found: {mesh_path}")
 
     return PipelineConfig(mesh_path=str(mesh_path), seed=cfg.seed, stitch_size=cfg.stitch_size,
                           use_creases=cfg.use_creases)
