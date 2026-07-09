@@ -7,43 +7,25 @@ from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 
 
-def plot_stitch_rows(
-    row_stitch_connectivity,
-    annotations: list[str],
-    split_creases: Optional[list[np.ndarray]] = None,
-    figsize: tuple[int, int] = (10, 15),
-) -> tuple[Figure, Axes]:
-    """Plot per-row stitch connectivity as a 2D diagram.
-
-    Each row is drawn as a set of horizontal blue line segments (one per stitch),
-    bounded above and below by red lines marking the row extent. An annotation
-    label is placed to the right of each row. If ``split_creases`` is given, FLO
-    stitches are overlaid in cyan and BLO stitches in green, matching the crease
-    colouring used by ``plot_crochet_graph``. A small arrow under the start of
-    each row's bottom line marks its working direction, alternating left-to-right
-    and right-to-left starting with left-to-right on the first row.
-
-    Suitable for both raw stitch sequences (e.g. ``"dc ch sc tr"``) and folded
-    sequences with repetition counts (e.g. ``"3*dc 2*ch (42)"``).
+def plot_stitch_rows(row_stitch_connectivity, annotations: list[str], split_creases: Optional[list[np.ndarray]] = None,
+                     figsize: tuple[int, int] = (10, 15), ) -> tuple[Figure, Axes]:
+    """Plot per-row stitch connectivity as a 2D diagram with row instructions annotations.
 
     Args:
-        row_stitch_connectivity: Sequence of per-row arrays, each of shape
-            (S, 2) where each row gives the [start, end] column positions of
-            one stitch, as returned by ``get_row_connectivity``.
-        annotations: One label string per row, displayed to the right of the
-            row. Length must match ``row_stitch_connectivity``.
-        split_creases: Optional per-row crease labels, one int8 array per row
-            giving the label for each vertex in that row (as in
-            ``CrochetGraph.split_creases``) — 1 for BLO, -1 for FLO, 0 for
-            regular. Indexed via ``row_stitch_connectivity[row][:, 0]``, so its
-            length may differ from the number of stitches in the row.
+        row_stitch_connectivity: Sequence of per-row arrays, each of shape (S, 2) where each row gives connectivity
+            information between two consecutive rows.
+        annotations: One label string per row, displayed to the right of the row.  Length must match
+            ``row_stitch_connectivity``.
+        split_creases: Optional per-row crease labels.
         figsize: Matplotlib figure size as (width, height) in inches.
 
     Returns:
         The created ``(Figure, Axes)`` pair.
     """
     fig, ax = plt.subplots(figsize=figsize)
-    for row_idx, (row_connectivity, label) in enumerate(zip(row_stitch_connectivity, annotations)):
+    right_arrow = (0, 1)
+    left_arrow = (1, 0)
+    for row_idx, (row_connectivity, label) in enumerate(zip(row_stitch_connectivity, annotations, strict=True)):
         stitch_segments = np.stack(
             [row_connectivity, np.repeat([[row_idx - 0.25, row_idx + 0.25]], len(row_connectivity), axis=0)],
             axis=-1,
@@ -63,10 +45,7 @@ def plot_stitch_rows(
         ax.annotate(label, xy=[row_connectivity[-1, :].max() + 1, row_idx])
 
         arrow_y = row_idx - 0.4
-        if row_idx % 2 == 0:
-            arrow_start, arrow_end = 0, 1
-        else:
-            arrow_start, arrow_end = 1, 0
+        arrow_start, arrow_end = right_arrow if row_idx % 2 == 0 else left_arrow
         ax.annotate('', xy=(arrow_end, arrow_y), xytext=(arrow_start, arrow_y),
                     arrowprops=dict(arrowstyle='-|>', color='k', lw=1.5))
     ax.set_ylabel("row")
@@ -80,12 +59,8 @@ def plot_stitch_rows(
 def plot_final_instructions(instructions_text: str) -> tuple[Figure, Axes]:
     """Display formatted crochet instructions as a text-only figure.
 
-    Renders the instruction string centred vertically in a plain matplotlib
-    figure with all axes hidden, suitable for printing or saving as an image.
-
     Args:
-        instructions_text: The full instruction string to display, as produced
-            by ``create_final_instructions``.
+        instructions_text: The full instruction string to display.
 
     Returns:
         The created ``(Figure, Axes)`` pair.
