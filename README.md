@@ -5,10 +5,11 @@
 > (i.e. anything that isn't a single blob-like surface) will not produce a correct pattern.
 > This feature is still in development — stay tuned!
 
-AmiGo turns a 3D mesh into a row-by-row amigurumi crochet pattern. Given a mesh and a seed
-vertex, it computes a geodesic row/column parameterization of the surface, samples it into a
-grid of stitches (including BLO/FLO crease detection), and folds the result into compact,
-human-readable crochet instructions.
+Python implementation of the paper
+[AmiGo: Computational Design of Amigurumi Crochet Patterns](https://mirelabc.github.io/publications/AmiGo_lores.pdf)
+by Michal Edelstein, Hila Peleg, Shachar Itzhaky, and Mirela Ben-Chen (SCF '22).
+
+AmiGo is an algorithm for converting a 3d triangle mesh into human-readable amigurumi crochet pattern.
 
 ## Installation
 
@@ -54,6 +55,42 @@ python main.py --mesh_path meshes/zzmushroom_josh_r.obj --seed 82 --stitch_size 
 
 Run `python main.py --help` for the full list of options, or `--print_config` to see the
 fully resolved configuration without running the pipeline.
+
+## Citation
+If you find this code useful, please cite our paper:
+
+
+```bibtex
+@inproceedings{10.1145/3559400.3562005,
+author = {Edelstein, Michal and Peleg, Hila and Itzhaky, Shachar and Ben-Chen, Mirela},
+title = {AmiGo: Computational Design of Amigurumi Crochet Patterns},
+year = {2022},
+isbn = {9781450398725},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3559400.3562005},
+doi = {10.1145/3559400.3562005},
+booktitle = {Proceedings of the 7th Annual ACM Symposium on Computational Fabrication},
+articleno = {5},
+numpages = {11},
+keywords = {geometry processing, crochet, computational knitting},
+location = {Seattle, WA, USA},
+series = {SCF '22}
+}
+```
+
+```bibtex
+@inproceedings{Edelstein_2022, series={SCF ’22},
+   title={AmiGo: Computational Design of Amigurumi Crochet Patterns},
+   url={http://dx.doi.org/10.1145/3559400.3562005},
+   DOI={10.1145/3559400.3562005},
+   booktitle={Proceedings of the 7th Annual ACM Symposium on Computational Fabrication},
+   publisher={ACM},
+   author={Edelstein, Michal and Peleg, Hila and Itzhaky, Shachar and Ben-Chen, Mirela},
+   year={2022},
+   month=Oct, pages={1–11},
+   collection={SCF ’22} }
+```
 
 ## License
 
