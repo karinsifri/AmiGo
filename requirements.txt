@@ -7,3 +7,5 @@ scipy
 pytest
 pyvista
 matplotlib
+jsonargparse
+docstring_parser
