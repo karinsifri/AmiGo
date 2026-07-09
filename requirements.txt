@@ -6,3 +6,4 @@ fastdtw
 scipy
 pytest
 pyvista
+matplotlib
