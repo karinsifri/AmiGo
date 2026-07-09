@@ -7,57 +7,45 @@ from src.crochet_graph import CrochetGraph
 
 
 def plot_crochet_graph(graph: CrochetGraph) -> pv.Plotter:
-    """Plot the crochet graph edges and crease annotations in 3D.
-
-    Draws row edges in red and column edges in blue. Column edges whose source
-    vertex is BLO (back-loop-only) are overlaid in green; FLO (front-loop-only)
-    in cyan. BLO and FLO vertices are also drawn as coloured point markers.
+    """Plot the crochet graph edges and crease
 
     Args:
         graph: Fully constructed crochet graph.
 
     Returns:
-        Configured plotter. Call ``plotter.show()`` to open the window.
+        Configured plotter
     """
-    blo = graph.creases == 1
-    flo = graph.creases == -1
+    blo: np.ndarray[np.bool_] = (graph.creases == 1)
+    flo: np.ndarray[np.bool_] = (graph.creases == -1)
     blo_col = blo[graph.column_edges[:, 0]]
     flo_col = flo[graph.column_edges[:, 0]]
 
     plotter = pv.Plotter()
-    plotter.add_lines(graph.vertices[graph.row_edges].reshape((-1, 3)), color="red", width=5, label="Row Edges", connected=False)
-    plotter.add_lines(graph.vertices[graph.column_edges].reshape((-1, 3)), color="blue", width=5, label="Column Edges", connected=False)
+    plotter.add_lines(graph.vertices[graph.row_edges].reshape((-1, 3)), color="red", width=5, label="Row Edges",
+                      connected=False)
+    plotter.add_lines(graph.vertices[graph.column_edges].reshape((-1, 3)), color="blue", width=5, label="Column Edges",
+                      connected=False)
     if blo_col.any():
-        plotter.add_lines(graph.vertices[graph.column_edges[blo_col]].reshape((-1, 3)), color="green", width=6, label="BLO Column Edges", connected=False)
+        plotter.add_lines(graph.vertices[graph.column_edges[blo_col]].reshape((-1, 3)), color="green", width=6,
+                          label="BLO Edges", connected=False)
     if flo_col.any():
-        plotter.add_lines(graph.vertices[graph.column_edges[flo_col]].reshape((-1, 3)), color="cyan", width=6, label="FLO Column Edges", connected=False)
+        plotter.add_lines(graph.vertices[graph.column_edges[flo_col]].reshape((-1, 3)), color="cyan", width=6,
+                          label="FLO Edges", connected=False)
     plotter.add_legend()
     return plotter
 
 
-def plot_flat_mesh(
-    mesh: tm.Trimesh,
-    row_order: np.ndarray,
-    column_order: np.ndarray,
-    stitch_size: float,
-) -> pv.Plotter:
+def plot_flat_mesh(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.ndarray, stitch_size: float) -> pv.Plotter:
     """Plot the UV-flattened mesh and the sampled stitch grid in 2D.
 
-    Flattens the mesh into the UV plane (row_order as X, column_order as Y),
-    samples a regular grid of points at the given stitch spacing, and filters
-    them down to the points that lie on the flattened mesh. Displays the mesh
-    in cyan with visible edges, and overlays the sampled points in red. The
-    camera is locked to the XY plane.
-
     Args:
-        mesh: Cut mesh on which row_order and column_order are defined, as
-            returned by ``compute_row_column_order``.
-        row_order: Per-vertex row-order values (u-axis), shape (V,).
-        column_order: Per-vertex column-order values (v-axis), shape (V,).
-        stitch_size: Spacing between sampled stitch points along both axes.
+        mesh: Cut mesh on which row_order and column_order are defined on
+        row_order ((v, ), float): Per-vertex row-order values (u-axis)
+        column_order((v, ), float): Per-vertex column-order values (v-axis)
+        stitch_size: Spacing between sampled stitch points along both axes
 
     Returns:
-        Configured plotter. Call ``plotter.show()`` to open the window.
+        Configured plotter
     """
     flat_mesh = tm.Trimesh(np.vstack([row_order, column_order, np.zeros_like(row_order)]).T, mesh.faces)
 
