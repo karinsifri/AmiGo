@@ -1,5 +1,10 @@
 # AmiGo
 
+> [!WARNING]
+> **Branching meshes are not supported yet.** Shapes with limbs, ears, or other appendages
+> (i.e. anything that isn't a single blob-like surface) will not produce a correct pattern.
+> This feature is still in development — stay tuned!
+
 AmiGo turns a 3D mesh into a row-by-row amigurumi crochet pattern. Given a mesh and a seed
 vertex, it computes a geodesic row/column parameterization of the surface, samples it into a
 grid of stitches (including BLO/FLO crease detection), and folds the result into compact,
