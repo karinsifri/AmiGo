@@ -1,0 +1,254 @@
+import gpytoolbox as gpy
+import numpy as np
+import trimesh as tm
+from potpourri3d import MeshHeatMethodDistanceSolver, EdgeFlipGeodesicSolver
+
+from src.consts import HEAT_COEFFICIENT, EPSILON, ALPHA
+from src.shapeop import edge_basis, shapeop, shape_operator_ftf
+from src.utils import least_squares_with_equality
+
+
+def compute_row_column_order(mesh: tm.Trimesh, origin: int) -> tuple[tm.Trimesh, np.ndarray, np.ndarray, np.ndarray]:
+    """ Given a triangle mesh and a seed point, compute the row column order function that can be sampled to compute a
+    crochet graph.
+
+    Args:
+        mesh: a mesh to compute the functions on
+        origin: an index of a vertex in the mesh that will be the seed point for the functions
+
+    Returns:
+        A tuple containing:
+            - cut_mesh: a mesh object the functions are defined on, the mesh will be the same by shape, but it will have
+                a cut where the end of the rows will be
+            - row_order ((v,), float): a numpy array containing the row order functions value for each vertex in the
+                mesh
+            - column_order ((v,), float): a numpy array containing the column order functions value for each vertex in
+                the mesh
+            - geodesic_path ((n, 3), float): the points of the geodesic path from the origin to the distance-field
+                maximum, used to cut the mesh
+    """
+    distance_solver = MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces, t_coef=HEAT_COEFFICIENT)
+    distance_field = distance_solver.compute_distance(origin)
+
+    path_solver = EdgeFlipGeodesicSolver(mesh.vertices, mesh.faces)
+    geodesic_path = path_solver.find_geodesic_path(origin, np.argmax(distance_field))
+
+    cut_path = get_path_cut(mesh, distance_field, geodesic_path)
+    f_new, v_ind_new = gpy.cut_edges(mesh.faces, cut_path)
+    v_new = mesh.vertices[v_ind_new]
+    cut_mesh = tm.Trimesh(vertices=v_new, faces=f_new, process=False)
+
+    row_order = distance_field[v_ind_new]
+
+    column_order = get_column_order(cut_mesh, row_order, geodesic_path)
+
+    return cut_mesh, row_order, column_order, geodesic_path
+
+
+def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
+    """Given a list of points that lay on a mesh edges, find the edges they lay on.
+        - If a point lies on a vertex, the returned edge will be [v, v] where v is the index of the vertex.
+        - If no matching edge was found, the returned edge will be [-1, -1]
+
+    Args:
+        mesh: a Trimesh object
+        points ((n, 3), float): a list points on the mesh edges
+
+    Returns:
+        ((n, 2), int) a list of edges the point lay on
+    """
+    # initialize the returned array with the "not_found" value
+    found_edges = np.full((len(points), 2), -1, dtype=np.int32)
+
+    # get the face that the point lies on (or the closest face)
+    _, _, relevant_face_idx = tm.proximity.closest_point(mesh, points)
+    relevant_faces = mesh.faces[relevant_face_idx]
+
+    # check if the point is one of the vertices of the face
+    close_to_vertex = np.all(np.isclose(mesh.vertices[relevant_faces], points[:, None]), axis=-1)
+
+    # returns two lists of indices, the first describes the points in the given list that are close to a vertex,
+    # the second describes which of the face vertices is the point close to
+    point_is_vertex = np.where(close_to_vertex)
+
+    # get the index of the matching vertex in the full mesh
+    matching_vertices = relevant_faces[point_is_vertex[0], point_is_vertex[1]]
+
+    # fill the returned array with the vertices indices found to be close to the points
+    found_edges[point_is_vertex[0], :] = np.tile(matching_vertices, (2, 1)).T
+
+    # handles case: point is on one of the edges in the faces
+    edge_vectors = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
+    vertex_to_point_vectors = points[:, None] - mesh.vertices[relevant_faces]
+
+    # a point x is on a line between a and b if the vector ab is linearly dependent on the vector ax
+    linearly_dependant = np.linalg.matrix_rank(np.stack([edge_vectors, vertex_to_point_vectors], axis=2),
+                                               tol=EPSILON) == 1
+    point_on_edge = np.logical_and(linearly_dependant, ~np.any(close_to_vertex, axis=-1)[:, None])
+
+    # fill the returned array with the edge indices found
+    found_edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
+                                                        np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
+
+    return found_edges
+
+
+def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray) -> np.ndarray:
+    """ Given a mesh, distance-field and a geodesic path, find the vertices of a path to cut the mesh by.
+
+    Cut the mesh on the right to the geodesic path, determining orientation by the gradient of the distance field.
+
+    Args:
+        mesh: a Trimesh object
+        distance_field ((v, ), float): a distance field from the seed point
+        path ((n, 3), float): the geodesic path from the seed point to the distance-field maximum where the points lay
+            on the mesh edges
+
+    Returns:
+        ((n, 2), int) a list of edges of the cut path
+    """
+    path_edges = find_edges_from_points(mesh, path)
+
+    if np.any(path_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge or vertex")
+
+    _, _, face_idx = tm.proximity.closest_point(mesh, path)
+    edge_vectors = mesh.vertices[path_edges[:, 0]] - mesh.vertices[path_edges[:, 1]]
+
+    gradients = np.reshape(gpy.grad(mesh.vertices, mesh.faces) @ distance_field, (-1, 3), order='F')
+    rotated = np.cross(mesh.face_normals, gradients, axis=1)
+
+    dot_products = np.sum(edge_vectors * rotated[face_idx], axis=1)
+
+    # select the "right" side of the edge
+    # where the angle between the rotated gradient and the edge is in the range [-90, 90]
+    # (the dot-product between the edge and the rotated gradient is larger than 0)
+    cut_vertices = path_edges[np.arange(path_edges.shape[0]), (dot_products >= 0).astype(np.uint8)]
+
+    # convert the vertex trail to a connected path of edges
+    cut_edges = np.vstack([cut_vertices, np.roll(cut_vertices, -1)]).T[:-1]
+
+    # remove degenerate edges
+    cut_edges = cut_edges[cut_edges[:, 0] != cut_edges[:, 1]]
+
+    return cut_edges
+
+
+def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array) -> np.ndarray:
+    """ Compute the column order function on a mesh - a tangent field with constraint of value 0 on the given path
+
+    Args:
+        mesh: the cut mesh object to compute the column order function on
+        distance_field: the field the column order should be tangent to
+        path: points on the mesh that should receive the value 0 in the computed function
+
+    Returns:
+        ((v,), float) an array of the value of the g function on the given mesh
+    """
+    grad_operator = gpy.grad(mesh.vertices, mesh.faces).toarray().reshape((len(mesh.faces), 3, len(mesh.vertices)),
+                                                                          order='F')
+
+    distance_gradient = grad_operator @ distance_field
+    rotated_gradient = np.cross(mesh.face_normals, distance_gradient, axis=1)
+
+    isoline_direction = rotated_gradient / np.maximum(np.linalg.norm(rotated_gradient, axis=1, keepdims=True), EPSILON)
+
+    # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
+    A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
+
+    # since we cut the mesh on the path, each point on the path is no exactly 2 edges (or vertices), we want to create
+    # a condition that would apply only for one of them. Therefore, to find the edges which the path edges lie on, we
+    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
+    # gradients
+    _, _, face_idx = tm.proximity.closest_point(mesh, path)
+    condition_edges = find_edges_from_points(mesh,
+                                             path + rotated_gradient[face_idx] * EPSILON)
+
+    B = get_path_condition(mesh.vertices, condition_edges, path)
+
+    column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
+
+    return column_order
+
+
+def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
+    """ Create a condition that makes sure that g(path)=0. the condition is a matrix B that should hold Bg=0.
+
+    if the path point (c_i) lies on an edge (a_i, b_i), we will demand that the linear interpolation of the function
+    on the edge vertices in the path point will be equal to 0.
+        | c_i - a_i | * g(b_i) +  | c_i - b_i | * g(a_i) = 0
+    Therefore, the constraint matrix should contain
+        B_ij:   | c_i - b_i | where the j-th vertex is a_i and
+                | c_i - a_i | where the j-th vertex is b_i
+
+    if the path point (c_i) lies on a vertex, we will demand that the value of the function in this point will be equal
+    to 0. Therefore, the constraint matrix should contain
+        B_ij:   1 when c_i is the j-th vertex in the mesh
+
+    Args:
+        vertices ((v, 3), float): the vertices of the mesh
+        condition_edges ((n, 2), int): the edges of the path condition
+        path ((n, 3), float): the points on the mesh that should receive the value 0 in the computed function
+
+    Returns:
+        ((n, v), float) a condition matrix that makes sure that g(path)=0.
+    """
+    if np.any(condition_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge or vertex")
+
+    # initialize the condition matrix; there are n conditions, and they should hold for all the points on the mesh
+    condition_matrix = np.zeros((len(condition_edges), len(vertices)))
+
+    # set the constraint for points that are on an edge
+    condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
+        vertices[condition_edges[:, 1]] - path, axis=-1)
+    condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
+        vertices[condition_edges[:, 0]] - path, axis=-1)
+
+    # set the constraint for points that are on a vertex
+    on_vertex = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
+    if on_vertex.size:
+        condition_matrix[on_vertex, condition_edges[on_vertex, 0]] = 1
+
+    return condition_matrix
+
+
+def get_column_order_goal(mesh: tm.Trimesh, isoline_direction: np.ndarray) -> np.ndarray:
+    """Compute the per-face goal magnitude for the column-order gradient field (7.1.2).
+
+    In saddle regions where negative curvature would otherwise distort the column layout, the goal is replaced by a
+    curvature-aware weight that adjusts column spacing to compensate.
+
+    The adjustment applies only to faces where both the mean curvature H = (k₁+k₂)/2 and the Gaussian curvature
+    K = k₁·k₂ are negative. On those faces the goal is:
+
+        adjusted_goal = tanh(−κ_iso / α) / 2 + 1
+
+    where κ_iso is the normal curvature in the isoline direction and α = ALPHA controls the transition width.
+
+    Args:
+        mesh: the cut mesh on which the column-order function is being solved.
+        isoline_direction ((nf, 3), float): per-face 3-D vectors tangent to the isolines of the row-order field.
+
+    Returns:
+        ((nf,), float) per-face goal scalars; 1 on unaffected faces, adjusted in (0.5, 1.5) on saddle faces.
+    """
+    _, _, kminf, kmaxf = shape_operator_ftf(mesh)
+
+    mean_curv = (kminf + kmaxf) / 2
+    gaussian_curv = kminf * kmaxf
+
+    # Saddle faces (K < 0) where the negative principal curvature dominates (H < 0).
+    faces_to_adjust = (mean_curv < 0) & (gaussian_curv < 0)
+
+    # Project the isoline direction into each face's 2-D tangent basis: (nf, 2).
+    isoline_dir_2d = (edge_basis(mesh) @ isoline_direction.flatten(order='F')).reshape(-1, 2, order='F')
+
+    # Normal curvature in the isoline direction: κ_iso = d^T SO d, per face.
+    isoline_curvature = (isoline_dir_2d * (
+            shapeop(mesh) @ isoline_dir_2d.flatten(order='F')
+    ).reshape(-1, 2, order='F')).sum(axis=-1)
+
+    adjusted_goal = np.tanh(-isoline_curvature / ALPHA) / 2 + 1
+
+    return np.where(faces_to_adjust, adjusted_goal, 1)

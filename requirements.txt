@@ -1,0 +1,11 @@
+trimesh
+potpourri3d
+numpy
+gpytoolbox
+fastdtw
+scipy
+pytest
+pyvista
+matplotlib
+jsonargparse
+docstring_parser
