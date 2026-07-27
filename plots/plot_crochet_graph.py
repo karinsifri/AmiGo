@@ -58,7 +58,7 @@ def plot_flat_mesh(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.nda
 
     plotter = pv.Plotter()
     plotter.add_mesh(pv.wrap(flat_mesh), color='cyan', label="Flattened Mesh", show_edges=True)
-    plotter.add_points(sample_points, color='red', label="Sampled Points")
+    plotter.add_points(sample_points, color='red', render_points_as_spheres=True, label="Sampled Points")
     plotter.add_legend()
     plotter.view_xy()
     return plotter
