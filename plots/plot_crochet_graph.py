@@ -47,10 +47,12 @@ def plot_flat_mesh(mesh: tm.Trimesh, row_order: np.ndarray, column_order: np.nda
     Returns:
         Configured plotter
     """
-    flat_mesh = tm.Trimesh(np.vstack([row_order, column_order, np.zeros_like(row_order)]).T, mesh.faces)
+    flat_mesh = tm.Trimesh(np.vstack([column_order, row_order, np.zeros_like(row_order)]).T, mesh.faces)
 
-    sample_row_values, sample_col_values = np.meshgrid(np.arange(0, row_order.max(), stitch_size), np.arange(0, column_order.max(), stitch_size))
-    sample_points = np.stack((np.append(sample_row_values, row_order.max()), np.append(sample_col_values, 0), np.zeros((sample_row_values.size + 1,))), axis=-1)
+    sample_col_values, sample_row_values = np.meshgrid(np.arange(0, column_order.max(), stitch_size),
+                                                       np.arange(0, row_order.max(), stitch_size))
+    sample_points = np.stack((np.append(sample_col_values, 0), np.append(sample_row_values, row_order.max()),
+                              np.zeros((sample_row_values.size + 1,))), axis=-1)
     _, point_distances, _ = tm.proximity.closest_point(flat_mesh, sample_points)
     sample_points = sample_points[point_distances < EPSILON]
 
