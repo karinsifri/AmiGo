@@ -61,26 +61,8 @@ If you find this code useful, please cite our paper:
 
 
 ```bibtex
-@inproceedings{10.1145/3559400.3562005,
-author = {Edelstein, Michal and Peleg, Hila and Itzhaky, Shachar and Ben-Chen, Mirela},
-title = {AmiGo: Computational Design of Amigurumi Crochet Patterns},
-year = {2022},
-isbn = {9781450398725},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-url = {https://doi.org/10.1145/3559400.3562005},
-doi = {10.1145/3559400.3562005},
-booktitle = {Proceedings of the 7th Annual ACM Symposium on Computational Fabrication},
-articleno = {5},
-numpages = {11},
-keywords = {geometry processing, crochet, computational knitting},
-location = {Seattle, WA, USA},
-series = {SCF '22}
-}
-```
-
-```bibtex
-@inproceedings{Edelstein_2022, series={SCF ’22},
+@inproceedings{Edelstein_2022,
+   series={SCF ’22},
    title={AmiGo: Computational Design of Amigurumi Crochet Patterns},
    url={http://dx.doi.org/10.1145/3559400.3562005},
    DOI={10.1145/3559400.3562005},
@@ -90,6 +72,22 @@ series = {SCF '22}
    year={2022},
    month=Oct, pages={1–11},
    collection={SCF ’22} }
+```
+
+```bibtex
+@inproceedings{bridges2024:369,
+  author      = {Chen, Mirela Ben and Edelstein, Michal},
+  title       = {Amigurumi Crochet Patterns from Geodesic Distances},
+  pages       = {369--372},
+  booktitle   = {Proceedings of Bridges 2024: Mathematics, Art, Music, Architecture, Culture},
+  year        = {2024},
+  editor      = {Verrill, Helena and Kattchee, Karl and Gould, S. Louise and Torrence, Eve},
+  isbn        = {978-1-938664-49-6},
+  issn        = {1099-6702},
+  publisher   = {Tessellations Publishing},
+  address     = {Phoenix, Arizona},
+  url         = {http://archive.bridgesmathart.org/2024/bridges2024-369.html}
+}
 ```
 
 ## License
