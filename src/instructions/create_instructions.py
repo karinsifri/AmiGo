@@ -94,7 +94,7 @@ def dtw_to_stitches(dtw_path: np.ndarray, creases: Optional[np.ndarray] = None) 
     for payload in stitch_payloads:
         if set(payload) - {'1', '2', 'b', 'f'} or ('1' in payload and '2' in payload):  # mixed inc+dec is invalid
             raise ValueError("Invalid Stitch")
-        elif "1" in payload:
+        if "1" in payload:
             extra_inc_count = payload.count('1')
             s = ("inc" if extra_inc_count == 1 else f"inc{extra_inc_count}")
         elif "2" in payload:
