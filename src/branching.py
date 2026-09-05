@@ -68,7 +68,7 @@ def _get_vertex_rank(scalar_field: np.ndarray) -> np.ndarray:
     """ Replace the values of a scalar field by their rank, breaking ties by the vertex index.
 
     This turns the field into a strict total order on the vertices: no two vertices share a value, so comparing two
-    neighbours can never give 0. Plateaus of the original field are resolved consistently by index, which keeps the
+    neighbors can never give 0. Plateaus of the original field are resolved consistently by index, which keeps the
     sign-change count of `get_vertex_sign_changes` well-defined.
 
     The order imposed on a plateau is arbitrary rather than geometric, so a field that is flat over a whole region will

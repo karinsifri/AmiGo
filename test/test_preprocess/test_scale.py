@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import trimesh as tm
 
-from preprocess.scale import set_surface_area_to_one
+from src.preprocess.scale import set_surface_area_to_one
 
 
 @pytest.mark.parametrize("input_mesh, expected_mesh", [
