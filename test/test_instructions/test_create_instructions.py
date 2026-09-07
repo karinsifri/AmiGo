@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from instructions.create_instructions import dtw_to_stitches, create_final_instructions
+from src.instructions.create_instructions import dtw_to_stitches, create_final_instructions
 
 
 @pytest.mark.parametrize('dtw, stitches', [
