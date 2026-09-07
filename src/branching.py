@@ -24,11 +24,10 @@ def find_saddle_points(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.ndarray
 
     Returns:
         ((v,), bool) a mask that is True for every interior vertex that is a saddle point of the field
-    """
-    if scalar_field.shape != (len(mesh.vertices),):
-        raise ValueError(f"Expected one scalar value per vertex - an array of shape ({len(mesh.vertices)},), "
-                         f"received an array of shape {scalar_field.shape}")
 
+    Raises:
+        ValueError: if `scalar_field` does not hold exactly one value per vertex of the mesh
+    """
     sign_change_count = get_vertex_sign_changes(mesh, scalar_field)
 
     return (sign_change_count > 2) & ~_find_boundary_vertices(mesh)
@@ -54,8 +53,15 @@ def get_vertex_sign_changes(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.nd
 
     Returns:
         ((v,), int) the number of sign changes around the link of each vertex; always an even number
+
+    Raises:
+        ValueError: if `scalar_field` does not hold exactly one value per vertex of the mesh
     """
     num_vertices = len(mesh.vertices)
+
+    if scalar_field.shape != (num_vertices,):
+        raise ValueError(f"Expected one scalar value per vertex - an array of shape ({num_vertices},), "
+                         f"received an array of shape {scalar_field.shape}")
 
     rank = _get_vertex_rank(scalar_field)
 

@@ -180,13 +180,23 @@ def test_find_saddle_points_keeps_the_interior_centre_of_an_open_mesh(fan):
     assert not np.any(saddles[_find_boundary_vertices(mesh)])
 
 
-@pytest.mark.parametrize("field", [
+MISMATCHED_FIELDS = [
     np.zeros(5),
     np.zeros(700),
     np.zeros((642, 3)),
     np.zeros((642, 1)),
-])
+]
+
+
+@pytest.mark.parametrize("field", MISMATCHED_FIELDS)
 def test_find_saddle_points_rejects_a_mismatched_field(unit_sphere, field):
     """ A field that does not hold exactly one value per vertex is rejected. """
     with pytest.raises(ValueError, match="Expected one scalar value per vertex"):
         find_saddle_points(unit_sphere, field)
+
+
+@pytest.mark.parametrize("field", MISMATCHED_FIELDS)
+def test_sign_changes_reject_a_mismatched_field(unit_sphere, field):
+    """ A field that does not hold exactly one value per vertex is rejected. """
+    with pytest.raises(ValueError, match="Expected one scalar value per vertex"):
+        get_vertex_sign_changes(unit_sphere, field)
