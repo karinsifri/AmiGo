@@ -14,12 +14,16 @@ def find_saddle_points(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.ndarray
     Saddle points are where the isolines of the field split or merge, so they mark the places the crochet graph has to
     branch.
 
+    Boundary vertices are never reported. Their link is an open path rather than a full loop, so only part of their
+    neighbourhood is walked and the count above cannot be trusted - it can even come out odd. On the closed meshes this
+    is meant for there are no such vertices, so this only rules out meaningless answers on an open mesh.
+
     Args:
         mesh: a Trimesh object
         scalar_field ((v,), float): a scalar value per vertex of the mesh
 
     Returns:
-        ((v,), bool) a mask that is True for every vertex that is a saddle point of the field
+        ((v,), bool) a mask that is True for every interior vertex that is a saddle point of the field
     """
     if scalar_field.shape != (len(mesh.vertices),):
         raise ValueError(f"Expected one scalar value per vertex - an array of shape ({len(mesh.vertices)},), "
@@ -27,7 +31,7 @@ def find_saddle_points(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.ndarray
 
     sign_change_count = get_vertex_sign_changes(mesh, scalar_field)
 
-    return sign_change_count > 2
+    return (sign_change_count > 2) & ~_find_boundary_vertices(mesh)
 
 
 def get_vertex_sign_changes(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.ndarray:
@@ -62,6 +66,26 @@ def get_vertex_sign_changes(mesh: tm.Trimesh, scalar_field: np.ndarray) -> np.nd
         sign_change_count += np.bincount(vertex, weights=change, minlength=num_vertices).astype(np.int32)
 
     return sign_change_count
+
+
+def _find_boundary_vertices(mesh: tm.Trimesh) -> np.ndarray:
+    """ Mark the vertices that lie on the boundary of the mesh.
+
+    An interior edge is shared by two faces, while a boundary edge belongs to exactly one, so the vertices of the edges
+    that appear only once are the boundary of the mesh. On a closed mesh nothing is marked.
+
+    Args:
+        mesh: a Trimesh object
+
+    Returns:
+        ((v,), bool) a mask that is True for every vertex on the boundary of the mesh
+    """
+    edges, edge_counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+
+    boundary_vertices = np.zeros(len(mesh.vertices), dtype=bool)
+    boundary_vertices[edges[edge_counts == 1]] = True
+
+    return boundary_vertices
 
 
 def _get_vertex_rank(scalar_field: np.ndarray) -> np.ndarray:
