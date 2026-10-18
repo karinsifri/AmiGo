@@ -93,6 +93,68 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     return found_edges
 
 
+def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotated_gradients: np.ndarray) -> np.ndarray:
+    """Given a list of points that lay on the edges of a mesh that was cut along a path of its edges, find the edges
+    they lay on.
+
+    Cutting the mesh duplicates the vertices along the cut path, so a point lying on such a vertex matches several mesh
+    vertices that share its position, and only one of them - the copy on the side of the cut that should receive the
+    lower values - should be returned. Such a point is resolved by "pushing" it slightly in the direction of the
+    rotated gradient, and taking the copy of the vertex that belongs to the face the pushed point lands on.
+
+    The points lying on an edge are never ambiguous, since the edges of the cut path itself are not crossed by the
+    geodesic path.
+
+    Args:
+        mesh: a Trimesh object that was cut along a path of its edges
+        points ((n, 3), float): a list of points on the mesh edges
+        rotated_gradients ((f, 3), float): the per-face gradient of the row order field, rotated within the face, whose
+            direction points towards the side of the cut that should receive the lower values
+
+    Returns:
+        ((n, 2), int) a list of the edges the points lay on, where a point lying on a vertex v gives the edge [v, v]
+    """
+    found_edges = find_edges_from_points(mesh, points)
+
+    if np.any(found_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge or vertex, could not find their edges")
+
+    # a point that lies on a vertex is ambiguous exactly when several mesh vertices share that position, meaning the
+    # vertex was duplicated by the cut
+    on_vertex_idx = np.flatnonzero(found_edges[:, 0] == found_edges[:, 1])
+    on_vertex_positions = mesh.vertices[found_edges[on_vertex_idx, 0]]
+    repetition_count = np.count_nonzero(
+        np.all(np.isclose(mesh.vertices[:, None], on_vertex_positions[None]), axis=-1), axis=0)
+
+    ambiguous_idx = on_vertex_idx[repetition_count > 1]
+    ambiguous_positions = on_vertex_positions[repetition_count > 1]
+
+    if not ambiguous_idx.size:
+        return found_edges
+
+    # the ambiguous position lies on faces of both sides of the cut, so the face found here may belong to either side;
+    # it is used only for the direction of the rotated gradient, which is the same on both of them
+    _, _, ambiguous_face_idx = tm.proximity.closest_point(mesh, ambiguous_positions)
+
+    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
+    # gradients. half of the shortest edge in the mesh keeps the pushed point within the one-ring of the vertex, so the
+    # face it lands on is one of the faces carrying the correct copy of the vertex
+    moved_points = ambiguous_positions + rotated_gradients[ambiguous_face_idx] * (mesh.edges_unique_length.min() / 2)
+    _, _, correct_face_idx = tm.proximity.closest_point(mesh, moved_points)
+
+    # of the three vertices of the face the pushed point landed on, the correct copy is the one sharing the original
+    # position of the point
+    correct_faces = mesh.faces[correct_face_idx]
+    is_correct_copy = np.all(np.isclose(mesh.vertices[correct_faces], ambiguous_positions[:, None]), axis=-1)
+
+    if not np.all(np.count_nonzero(is_correct_copy, axis=-1) == 1):
+        raise ValueError("Could not disambiguate points lying on the cut path of the mesh")
+
+    found_edges[ambiguous_idx] = np.tile(correct_faces[is_correct_copy], (2, 1)).T
+
+    return found_edges
+
+
 def get_path_cut(mesh: tm.Trimesh, distance_field: np.ndarray, path: np.ndarray) -> np.ndarray:
     """ Given a mesh, distance-field and a geodesic path, find the vertices of a path to cut the mesh by.
 
@@ -156,14 +218,15 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
-    B = get_path_condition(mesh, path, rotated_gradient)
+    condition_edges = find_edges_from_cut_mesh_points(mesh, path, rotated_gradient)
+    B = get_path_condition(mesh.vertices, condition_edges, path)
 
     column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
 
     return column_order
 
 
-def get_path_condition(mesh: tm.Trimesh, path: np.ndarray, rotated_gradients: np.ndarray) -> np.ndarray:
+def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
     """ Create a condition that makes sure that g(path)=0. the condition is a matrix B that should hold Bg=0.
 
     if the path point (c_i) lies on an edge (a_i, b_i), we will demand that the linear interpolation of the function
@@ -177,68 +240,26 @@ def get_path_condition(mesh: tm.Trimesh, path: np.ndarray, rotated_gradients: np
     to 0. Therefore, the constraint matrix should contain
         B_ij:   1 when c_i is the j-th vertex in the mesh
 
-    Since the mesh is cut along the path, a path point that lies on a vertex of the cut path matches several mesh
-    vertices that share its position, and only one of them - the copy on the side of the cut that should receive the
-    lower values - may be constrained. Such a point is resolved by "pushing" it slightly in the direction of the
-    rotated gradient and taking the copy of the vertex that belongs to the face the pushed point lands on.
-
     Args:
-        mesh: the cut mesh object the condition is computed on
+        vertices ((v, 3), float): the vertices of the mesh
+        condition_edges ((n, 2), int): the edges carrying the path points, as returned by
+            find_edges_from_cut_mesh_points
         path ((n, 3), float): the points on the mesh that should receive the value 0 in the computed function
-        rotated_gradients ((f, 3), float): the per-face gradient of the row order field, rotated within the face, whose
-            direction points towards the side of the cut that should receive the lower values
 
     Returns:
         ((n, v), float) a condition matrix that makes sure that g(path)=0.
     """
-    condition_edges = find_edges_from_points(mesh, path)
-
     if np.any(condition_edges == -1):
-        raise ValueError("Received points that are not on a mesh edge or vertex, could not calculate column order")
-
-    # cutting the mesh duplicates the vertices along the cut path, so a path point that lies on such a vertex matches
-    # several mesh vertices sharing its position, and only the copy on the side that should receive the lower values
-    # may be constrained. the points lying on an edge are never ambiguous, since the edges of the cut path itself are
-    # not crossed by the geodesic path (Section "Geodesic Path and Mesh Cutting" in reports/implementation_details.tex)
-    on_vertex_idx = np.flatnonzero(condition_edges[:, 0] == condition_edges[:, 1])
-    on_vertex_positions = mesh.vertices[condition_edges[on_vertex_idx, 0]]
-    repetition_count = np.count_nonzero(
-        np.all(np.isclose(mesh.vertices[:, None], on_vertex_positions[None]), axis=-1), axis=0)
-
-    # the duplicated vertices are the ambiguous ones
-    ambiguous_idx = on_vertex_idx[repetition_count > 1]
-    ambiguous_positions = on_vertex_positions[repetition_count > 1]
-
-    if ambiguous_idx.size:
-        # the ambiguous position lies on faces of both sides of the cut, so the face found here may belong to either
-        # side; it is used only for the direction of the rotated gradient, which is the same on both of them
-        _, _, ambiguous_face_idx = tm.proximity.closest_point(mesh, ambiguous_positions)
-
-        # "push" the points slightly in the direction that should receive the lower values - the direction of the
-        # rotated gradients. half of the shortest edge in the mesh keeps the pushed point within the one-ring of the
-        # vertex, so the face it lands on is one of the faces carrying the correct copy of the vertex
-        moved_points = ambiguous_positions + rotated_gradients[ambiguous_face_idx] * (
-                mesh.edges_unique_length.min() / 2)
-        _, _, correct_face_idx = tm.proximity.closest_point(mesh, moved_points)
-
-        # of the three vertices of the face the pushed point landed on, the correct copy is the one sharing the
-        # original position of the path point
-        correct_faces = mesh.faces[correct_face_idx]
-        is_correct_copy = np.all(np.isclose(mesh.vertices[correct_faces], ambiguous_positions[:, None]), axis=-1)
-
-        if not np.all(np.count_nonzero(is_correct_copy, axis=-1) == 1):
-            raise ValueError("Could not disambiguate path points lying on the cut path of the mesh")
-
-        condition_edges[ambiguous_idx] = np.tile(correct_faces[is_correct_copy], (2, 1)).T
+        raise ValueError("Received points that are not on a mesh edge or vertex")
 
     # initialize the condition matrix; there are n conditions, and they should hold for all the points on the mesh
-    condition_matrix = np.zeros((len(condition_edges), len(mesh.vertices)))
+    condition_matrix = np.zeros((len(condition_edges), len(vertices)))
 
     # set the constraint for points that are on an edge
     condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
-        mesh.vertices[condition_edges[:, 1]] - path, axis=-1)
+        vertices[condition_edges[:, 1]] - path, axis=-1)
     condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
-        mesh.vertices[condition_edges[:, 0]] - path, axis=-1)
+        vertices[condition_edges[:, 0]] - path, axis=-1)
 
     # set the constraint for points that are on a vertex
     on_vertex = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
