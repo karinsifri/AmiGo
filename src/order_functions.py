@@ -156,22 +156,14 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
-    # since we cut the mesh on the path, each point on the path is no exactly 2 edges (or vertices), we want to create
-    # a condition that would apply only for one of them. Therefore, to find the edges which the path edges lie on, we
-    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
-    # gradients
-    _, _, face_idx = tm.proximity.closest_point(mesh, path)
-    condition_edges = find_edges_from_points(mesh,
-                                             path + rotated_gradient[face_idx] * EPSILON)
-
-    B = get_path_condition(mesh.vertices, condition_edges, path)
+    B = get_path_condition(mesh, path, rotated_gradient)
 
     column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
 
     return column_order
 
 
-def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: np.ndarray) -> np.ndarray:
+def get_path_condition(mesh: tm.Trimesh, path: np.ndarray, rotated_gradients: np.ndarray) -> np.ndarray:
     """ Create a condition that makes sure that g(path)=0. the condition is a matrix B that should hold Bg=0.
 
     if the path point (c_i) lies on an edge (a_i, b_i), we will demand that the linear interpolation of the function
@@ -186,24 +178,41 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
         B_ij:   1 when c_i is the j-th vertex in the mesh
 
     Args:
-        vertices ((v, 3), float): the vertices of the mesh
-        condition_edges ((n, 2), int): the edges of the path condition
+        mesh ((v, 3), float): the vertices of the mesh
         path ((n, 3), float): the points on the mesh that should receive the value 0 in the computed function
 
     Returns:
         ((n, v), float) a condition matrix that makes sure that g(path)=0.
     """
+    condition_edges = find_edges_from_points(mesh, path)
+
     if np.any(condition_edges == -1):
-        raise ValueError("Received points that are not on a mesh edge or vertex")
+        raise ValueError("Received points that are not on a mesh edge or vertex, could not calculate column order")
+
+    is_vertex = condition_edges[:, 0] == condition_edges[:, 1]
+    condition_vertices = condition_edges[is_vertex, 0]
+    repetition_count = np.sum(
+        np.all(np.isclose(mesh.vertices[:, None], mesh.vertices[None, condition_vertices]), axis=-1), axis=0)
+    _, _, relevant_face_idx = tm.proximity.closest_point(mesh, mesh.vertices[condition_vertices[repetition_count > 1]])
+
+    vertex_to_fix = is_vertex.astype(np.uint8)
+    vertex_to_fix[is_vertex] = repetition_count
+    vertex_to_fix = vertex_to_fix > 1
+    moved_points = mesh.vertices[condition_vertices[repetition_count > 1]] + rotated_gradients[relevant_face_idx] * (
+            mesh.edges_unique_length.min() / 2)
+    _, _, correct_face = tm.proximity.closest_point(mesh, moved_points)
+    corrected_vertex = mesh.faces[correct_face][np.all(np.isclose(mesh.vertices[mesh.faces[correct_face]],
+                                                                  mesh.vertices[condition_vertices[repetition_count > 1]]), axis=-1)]
+    condition_edges[vertex_to_fix] = np.tile(corrected_vertex, (2, 1)).T
 
     # initialize the condition matrix; there are n conditions, and they should hold for all the points on the mesh
-    condition_matrix = np.zeros((len(condition_edges), len(vertices)))
+    condition_matrix = np.zeros((len(condition_edges), len(mesh.vertices)))
 
     # set the constraint for points that are on an edge
     condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 0]] = np.linalg.norm(
-        vertices[condition_edges[:, 1]] - path, axis=-1)
+        mesh.vertices[condition_edges[:, 1]] - path, axis=-1)
     condition_matrix[np.arange(len(condition_edges)), condition_edges[:, 1]] = np.linalg.norm(
-        vertices[condition_edges[:, 0]] - path, axis=-1)
+        mesh.vertices[condition_edges[:, 0]] - path, axis=-1)
 
     # set the constraint for points that are on a vertex
     on_vertex = np.argwhere(condition_edges[:, 0] == condition_edges[:, 1])
