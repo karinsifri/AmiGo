@@ -75,7 +75,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     matching_vertices = relevant_faces[point_is_vertex[0], point_is_vertex[1]]
 
     # fill the returned array with the vertices indices found to be close to the points
-    found_edges[point_is_vertex[0], :] = np.tile(matching_vertices, (2, 1)).T
+    found_edges[point_is_vertex[0], :] = matching_vertices[:, None]
 
     # handles case: point is on one of the edges in the faces
     edge_vectors = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
@@ -89,6 +89,72 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     # fill the returned array with the edge indices found
     found_edges[point_on_edge.any(axis=1)] = np.vstack([relevant_faces[point_on_edge],
                                                         np.roll(relevant_faces, -1, axis=1)[point_on_edge]]).T
+
+    return found_edges
+
+
+def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, isoline_direction: np.ndarray) -> np.ndarray:
+    """Given a list of points that lay on the edges of a mesh that was cut along a path of its edges, find the edges
+    they lay on.
+
+    Cutting the mesh duplicates the vertices along the cut path, so a point lying on such a vertex matches several mesh
+    vertices that share its position, and only one of them - the copy on the side of the cut that should receive the
+    lower values - should be returned. Such a point is resolved by "pushing" it slightly in the isoline direction, and
+    taking the copy of the vertex that belongs to the face the pushed point lands on.
+
+    The points lying on an edge are never ambiguous, since the edges of the cut path itself are not crossed by the
+    geodesic path.
+
+    Args:
+        mesh: a Trimesh object that was cut along a path of its edges
+        points ((n, 3), float): a list of points on the mesh edges
+        isoline_direction ((f, 3), float): per-face unit vectors tangent to the isolines of the row-order field,
+            pointing towards the side of the cut that should receive the lower values. the points are pushed along
+            them, so their length scales the distance they are pushed by
+
+    Returns:
+        ((n, 2), int) a list of the edges the points lay on, where a point lying on a vertex v gives the edge [v, v]
+    """
+    found_edges = find_edges_from_points(mesh, points)
+
+    if np.any(found_edges == -1):
+        raise ValueError("Received points that are not on a mesh edge or vertex")
+
+    # a mesh vertex is a copy made by the cut exactly when another mesh vertex shares its position
+    _, position_idx, position_count = np.unique(mesh.vertices, axis=0, return_inverse=True, return_counts=True)
+    is_cut_copy = position_count[np.ravel(position_idx)] > 1
+
+    # only a point lying on a vertex can be ambiguous, and only if that vertex is one of the copies
+    on_vertex_idx = np.flatnonzero(found_edges[:, 0] == found_edges[:, 1])
+    ambiguous_idx = on_vertex_idx[is_cut_copy[found_edges[on_vertex_idx, 0]]]
+
+    if not ambiguous_idx.size:
+        return found_edges
+
+    ambiguous_vertices = found_edges[ambiguous_idx, 0]
+    ambiguous_positions = mesh.vertices[ambiguous_vertices]
+
+    # any face touching the vertex gives the isoline direction, which is the same on both sides of the cut.
+    # vertex_faces lists the faces of each vertex padded with -1, so the maximum of a row is always a real face
+    ambiguous_face_idx = mesh.vertex_faces[ambiguous_vertices].max(axis=1)
+
+    # half of the shortest edge in the mesh keeps the pushed point within the one-ring of the vertex, so the face it
+    # lands on is one of the faces carrying the correct copy of the vertex
+    push_distance = mesh.edges_unique_length.min() / 2
+
+    # "push" the points slightly towards the side that should receive the lower values - the isoline direction
+    pushed_points = ambiguous_positions + isoline_direction[ambiguous_face_idx] * push_distance
+    _, _, correct_face_idx = tm.proximity.closest_point(mesh, pushed_points)
+
+    # of the three vertices of the face the pushed point landed on, the correct copy is the one sharing the original
+    # position of the point
+    correct_faces = mesh.faces[correct_face_idx]
+    is_correct_copy = np.all(np.isclose(mesh.vertices[correct_faces], ambiguous_positions[:, None]), axis=-1)
+
+    if not np.all(np.count_nonzero(is_correct_copy, axis=-1) == 1):
+        raise ValueError("Could not disambiguate points lying on the cut path of the mesh")
+
+    found_edges[ambiguous_idx] = correct_faces[is_correct_copy][:, None]
 
     return found_edges
 
@@ -156,14 +222,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
-    # since we cut the mesh on the path, each point on the path is no exactly 2 edges (or vertices), we want to create
-    # a condition that would apply only for one of them. Therefore, to find the edges which the path edges lie on, we
-    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
-    # gradients
-    _, _, face_idx = tm.proximity.closest_point(mesh, path)
-    condition_edges = find_edges_from_points(mesh,
-                                             path + rotated_gradient[face_idx] * EPSILON)
-
+    condition_edges = find_edges_from_cut_mesh_points(mesh, path, isoline_direction)
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
     column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
@@ -187,7 +246,8 @@ def get_path_condition(vertices: np.ndarray, condition_edges: np.ndarray, path: 
 
     Args:
         vertices ((v, 3), float): the vertices of the mesh
-        condition_edges ((n, 2), int): the edges of the path condition
+        condition_edges ((n, 2), int): the edges carrying the path points, as returned by
+            find_edges_from_cut_mesh_points
         path ((n, 3), float): the points on the mesh that should receive the value 0 in the computed function
 
     Returns:
