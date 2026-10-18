@@ -75,7 +75,7 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     matching_vertices = relevant_faces[point_is_vertex[0], point_is_vertex[1]]
 
     # fill the returned array with the vertices indices found to be close to the points
-    found_edges[point_is_vertex[0], :] = np.tile(matching_vertices, (2, 1)).T
+    found_edges[point_is_vertex[0], :] = matching_vertices[:, None]
 
     # handles case: point is on one of the edges in the faces
     edge_vectors = mesh.vertices[np.roll(relevant_faces, -1, axis=1)] - mesh.vertices[relevant_faces]
@@ -117,30 +117,34 @@ def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotate
     found_edges = find_edges_from_points(mesh, points)
 
     if np.any(found_edges == -1):
-        raise ValueError("Received points that are not on a mesh edge or vertex, could not find their edges")
+        raise ValueError("Received points that are not on a mesh edge or vertex")
 
-    # a point that lies on a vertex is ambiguous exactly when several mesh vertices share that position, meaning the
-    # vertex was duplicated by the cut
+    # a mesh vertex is a copy made by the cut exactly when another mesh vertex shares its position
+    _, position_idx, position_count = np.unique(mesh.vertices, axis=0, return_inverse=True, return_counts=True)
+    is_cut_copy = position_count[np.ravel(position_idx)] > 1
+
+    # only a point lying on a vertex can be ambiguous, and only if that vertex is one of the copies
     on_vertex_idx = np.flatnonzero(found_edges[:, 0] == found_edges[:, 1])
-    on_vertex_positions = mesh.vertices[found_edges[on_vertex_idx, 0]]
-    repetition_count = np.count_nonzero(
-        np.all(np.isclose(mesh.vertices[:, None], on_vertex_positions[None]), axis=-1), axis=0)
-
-    ambiguous_idx = on_vertex_idx[repetition_count > 1]
-    ambiguous_positions = on_vertex_positions[repetition_count > 1]
+    ambiguous_idx = on_vertex_idx[is_cut_copy[found_edges[on_vertex_idx, 0]]]
 
     if not ambiguous_idx.size:
         return found_edges
 
-    # the ambiguous position lies on faces of both sides of the cut, so the face found here may belong to either side;
-    # it is used only for the direction of the rotated gradient, which is the same on both of them
-    _, _, ambiguous_face_idx = tm.proximity.closest_point(mesh, ambiguous_positions)
+    ambiguous_vertices = found_edges[ambiguous_idx, 0]
+    ambiguous_positions = mesh.vertices[ambiguous_vertices]
+
+    # any face touching the vertex gives the direction of the rotated gradient, which is the same on both sides of the
+    # cut. vertex_faces lists the faces of each vertex padded with -1, so the maximum of a row is always a real face
+    ambiguous_face_idx = mesh.vertex_faces[ambiguous_vertices].max(axis=1)
+
+    # half of the shortest edge in the mesh keeps the pushed point within the one-ring of the vertex, so the face it
+    # lands on is one of the faces carrying the correct copy of the vertex
+    push_distance = mesh.edges_unique_length.min() / 2
 
     # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
-    # gradients. half of the shortest edge in the mesh keeps the pushed point within the one-ring of the vertex, so the
-    # face it lands on is one of the faces carrying the correct copy of the vertex
-    moved_points = ambiguous_positions + rotated_gradients[ambiguous_face_idx] * (mesh.edges_unique_length.min() / 2)
-    _, _, correct_face_idx = tm.proximity.closest_point(mesh, moved_points)
+    # gradients
+    pushed_points = ambiguous_positions + rotated_gradients[ambiguous_face_idx] * push_distance
+    _, _, correct_face_idx = tm.proximity.closest_point(mesh, pushed_points)
 
     # of the three vertices of the face the pushed point landed on, the correct copy is the one sharing the original
     # position of the point
@@ -150,7 +154,7 @@ def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotate
     if not np.all(np.count_nonzero(is_correct_copy, axis=-1) == 1):
         raise ValueError("Could not disambiguate points lying on the cut path of the mesh")
 
-    found_edges[ambiguous_idx] = np.tile(correct_faces[is_correct_copy], (2, 1)).T
+    found_edges[ambiguous_idx] = correct_faces[is_correct_copy][:, None]
 
     return found_edges
 
