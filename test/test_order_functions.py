@@ -32,8 +32,8 @@ def cut_strip():
     return tm.Trimesh(vertices=vertices, faces=faces, process=False)
 
 
-def rotated_gradients_towards(cut_strip: tm.Trimesh, direction: np.ndarray) -> np.ndarray:
-    """ Per-face rotated gradients all pointing at the given direction, as the side to receive the lower values. """
+def isoline_direction_towards(cut_strip: tm.Trimesh, direction: np.ndarray) -> np.ndarray:
+    """ A per-face isoline direction all pointing at the given direction, as the side to receive the lower values. """
     return np.tile(direction, (len(cut_strip.faces), 1))
 
 
@@ -83,13 +83,15 @@ def test_get_path_condition():
 @pytest.mark.parametrize("direction, expected_result", [
     ([0, -1, 0], [[4, 4], [5, 5]]),  # the lower strip carries the copies 4 and 5
     ([0, 1, 0], [[7, 7], [8, 8]]),  # the upper strip carries the copies 7 and 8
+    (np.array([1, -1, 0]) / np.sqrt(2), [[4, 4], [5, 5]]),  # a diagonal push lands inside a face of the lower strip
+    (np.array([1, 1, 0]) / np.sqrt(2), [[7, 7], [8, 8]]),  # and inside a face of the upper strip
 ])
-def test_find_edges_from_cut_mesh_points_picks_the_copy_the_gradients_point_at(cut_strip, direction, expected_result):
-    """ Points on the duplicated vertices of the cut should resolve to the copies on the side the rotated gradients
-    point at, so flipping the gradients selects the other copy of the same vertices. """
+def test_find_edges_from_cut_mesh_points_picks_the_copy_the_direction_points_at(cut_strip, direction, expected_result):
+    """ Points on the duplicated vertices of the cut should resolve to the copies on the side the isoline direction
+    points at, so flipping the direction selects the other copy of the same vertices. """
     points = np.array([[1, 1, 0],
                        [2, 1, 0]])
-    result = find_edges_from_cut_mesh_points(cut_strip, points, rotated_gradients_towards(cut_strip, direction))
+    result = find_edges_from_cut_mesh_points(cut_strip, points, isoline_direction_towards(cut_strip, direction))
     np.testing.assert_array_equal(expected_result, result)
 
 
@@ -104,7 +106,7 @@ def test_find_edges_from_cut_mesh_points_keeps_the_unambiguous_points_in_place(c
                                 [1, 1],
                                 [4, 4],
                                 [5, 5]])
-    result = find_edges_from_cut_mesh_points(cut_strip, points, rotated_gradients_towards(cut_strip, [0, -1, 0]))
+    result = find_edges_from_cut_mesh_points(cut_strip, points, isoline_direction_towards(cut_strip, [0, -1, 0]))
     np.testing.assert_array_equal(np.sort(expected_result, axis=1), np.sort(result, axis=1))
 
 
@@ -114,7 +116,7 @@ def test_find_edges_from_cut_mesh_points_without_ambiguous_points(cut_strip):
                        [1, 0, 0]])
     expected_result = np.array([[0, 1],
                                 [1, 1]])
-    result = find_edges_from_cut_mesh_points(cut_strip, points, rotated_gradients_towards(cut_strip, [0, -1, 0]))
+    result = find_edges_from_cut_mesh_points(cut_strip, points, isoline_direction_towards(cut_strip, [0, -1, 0]))
     np.testing.assert_array_equal(np.sort(expected_result, axis=1), np.sort(result, axis=1))
 
 
@@ -122,4 +124,4 @@ def test_find_edges_from_cut_mesh_points_raises_for_a_point_off_the_edges(cut_st
     """ A point that lies on no mesh edge or vertex cannot be constrained, and should be reported. """
     points = np.array([[0.5, 0.25, 0]])
     with pytest.raises(ValueError, match="not on a mesh edge or vertex"):
-        find_edges_from_cut_mesh_points(cut_strip, points, rotated_gradients_towards(cut_strip, [0, -1, 0]))
+        find_edges_from_cut_mesh_points(cut_strip, points, isoline_direction_towards(cut_strip, [0, -1, 0]))

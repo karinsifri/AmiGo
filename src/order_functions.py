@@ -93,14 +93,14 @@ def find_edges_from_points(mesh: tm.Trimesh, points: np.ndarray) -> np.ndarray:
     return found_edges
 
 
-def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotated_gradients: np.ndarray) -> np.ndarray:
+def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, isoline_direction: np.ndarray) -> np.ndarray:
     """Given a list of points that lay on the edges of a mesh that was cut along a path of its edges, find the edges
     they lay on.
 
     Cutting the mesh duplicates the vertices along the cut path, so a point lying on such a vertex matches several mesh
     vertices that share its position, and only one of them - the copy on the side of the cut that should receive the
-    lower values - should be returned. Such a point is resolved by "pushing" it slightly in the direction of the
-    rotated gradient, and taking the copy of the vertex that belongs to the face the pushed point lands on.
+    lower values - should be returned. Such a point is resolved by "pushing" it slightly in the isoline direction, and
+    taking the copy of the vertex that belongs to the face the pushed point lands on.
 
     The points lying on an edge are never ambiguous, since the edges of the cut path itself are not crossed by the
     geodesic path.
@@ -108,8 +108,9 @@ def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotate
     Args:
         mesh: a Trimesh object that was cut along a path of its edges
         points ((n, 3), float): a list of points on the mesh edges
-        rotated_gradients ((f, 3), float): the per-face gradient of the row order field, rotated within the face, whose
-            direction points towards the side of the cut that should receive the lower values
+        isoline_direction ((f, 3), float): per-face unit vectors tangent to the isolines of the row-order field,
+            pointing towards the side of the cut that should receive the lower values. the points are pushed along
+            them, so their length scales the distance they are pushed by
 
     Returns:
         ((n, 2), int) a list of the edges the points lay on, where a point lying on a vertex v gives the edge [v, v]
@@ -133,17 +134,16 @@ def find_edges_from_cut_mesh_points(mesh: tm.Trimesh, points: np.ndarray, rotate
     ambiguous_vertices = found_edges[ambiguous_idx, 0]
     ambiguous_positions = mesh.vertices[ambiguous_vertices]
 
-    # any face touching the vertex gives the direction of the rotated gradient, which is the same on both sides of the
-    # cut. vertex_faces lists the faces of each vertex padded with -1, so the maximum of a row is always a real face
+    # any face touching the vertex gives the isoline direction, which is the same on both sides of the cut.
+    # vertex_faces lists the faces of each vertex padded with -1, so the maximum of a row is always a real face
     ambiguous_face_idx = mesh.vertex_faces[ambiguous_vertices].max(axis=1)
 
     # half of the shortest edge in the mesh keeps the pushed point within the one-ring of the vertex, so the face it
     # lands on is one of the faces carrying the correct copy of the vertex
     push_distance = mesh.edges_unique_length.min() / 2
 
-    # "push" the points slightly in the direction that should receive the lower values - the direction of the rotated
-    # gradients
-    pushed_points = ambiguous_positions + rotated_gradients[ambiguous_face_idx] * push_distance
+    # "push" the points slightly towards the side that should receive the lower values - the isoline direction
+    pushed_points = ambiguous_positions + isoline_direction[ambiguous_face_idx] * push_distance
     _, _, correct_face_idx = tm.proximity.closest_point(mesh, pushed_points)
 
     # of the three vertices of the face the pushed point landed on, the correct copy is the one sharing the original
@@ -222,7 +222,7 @@ def get_column_order(mesh: tm.Trimesh, distance_field: np.array, path: np.array)
     # get least-squares objective - inner product between the rotated distance field and the gradient of the function g
     A = np.sum(rotated_gradient[:, :, None] * grad_operator, axis=1)
 
-    condition_edges = find_edges_from_cut_mesh_points(mesh, path, rotated_gradient)
+    condition_edges = find_edges_from_cut_mesh_points(mesh, path, isoline_direction)
     B = get_path_condition(mesh.vertices, condition_edges, path)
 
     column_order = least_squares_with_equality(A, get_column_order_goal(mesh, isoline_direction), B)
