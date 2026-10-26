@@ -9,3 +9,4 @@ pyvista
 matplotlib
 jsonargparse
 docstring_parser
+rtree
